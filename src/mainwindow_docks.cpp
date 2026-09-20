@@ -527,17 +527,12 @@ void MainWindow::createDockWidgets()
             m_inlineEngine->setDisabledLanguages(QSet<QString>(langs.begin(), langs.end()));
             m_inlineEngine->setCompletionModel(m_settingsPanel->completionModel());
         }
-        // Configure BYOK provider (loaded as plugin)
-        const QString endpoint = m_settingsPanel->customEndpoint();
-        const QString apiKey   = m_settingsPanel->customApiKey();
-        if (!endpoint.isEmpty() && !apiKey.isEmpty()) {
-            for (IAgentProvider *p : m_agentOrchestrator->providers()) {
-                if (p->id() == QLatin1String("custom")) {
-                    QMetaObject::invokeMethod(p, "configure",
-                        Q_ARG(QString, endpoint), Q_ARG(QString, apiKey));
-                    break;
-                }
-            }
+        // Refresh the OpenAI-compatible preset providers from the updated
+        // settings (endpoint/key are written to the preset namespace by the
+        // settings panel; providers re-read them and re-run discovery).
+        for (IAgentProvider *p : m_agentOrchestrator->providers()) {
+            if (p->id().startsWith(QLatin1String("openai-compat:")))
+                QMetaObject::invokeMethod(p, "reloadConfig");
         }
         // Update disabled tools
         if (auto *tr = m_agentPlatform->toolRegistry()) {

@@ -2,6 +2,7 @@
 
 #include <QClipboard>
 #include <QComboBox>
+#include <QSignalBlocker>
 #include <QDesktopServices>
 #include <QDir>
 #include <QEventLoop>
@@ -367,6 +368,28 @@ void ChatPanelWidget::buildUi()
 
     headerLayout->addWidget(m_sessionTitleLabel, 1);
 
+    // ── Provider selector (Qt path) ──────────────────────────────────
+    m_providerCombo = new QComboBox(m_headerBar);
+    m_providerCombo->setToolTip(tr("Select AI provider"));
+    m_providerCombo->setAccessibleName(tr("AI provider"));
+    m_providerCombo->setStyleSheet(QStringLiteral(
+        "QComboBox { background:transparent; border:none; color:%1;"
+        "  font-size:12px; padding:2px 4px; }"
+        "QComboBox:hover { color:%2; }"
+        "QComboBox::drop-down { border:none; width:12px; }"
+        "QComboBox QAbstractItemView { background:%3; color:%2;"
+        "  border:1px solid %4; selection-background-color:%5; outline:none; }")
+        .arg(ChatTheme::FgSecondary, ChatTheme::FgPrimary,
+             ChatTheme::ScrollTrack, ChatTheme::Border, ChatTheme::ListSelection));
+    connect(m_providerCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int idx) {
+        if (idx < 0) return;
+        const QString id = m_providerCombo->itemData(idx).toString();
+        if (!id.isEmpty())
+            m_orchestrator->setActiveProvider(id);
+    });
+    headerLayout->addWidget(m_providerCombo);
+
     // Shared header button style — consistent 26x26 icons with 4px radius
     const QString headerBtnStyle = QStringLiteral(
         "QToolButton { background:transparent; color:%1; border:none;"
@@ -571,6 +594,7 @@ void ChatPanelWidget::connectOrchestrator()
         refreshModelList();
     });
 
+    refreshProviderList();
     refreshModelList();
 }
 
@@ -1072,6 +1096,7 @@ void ChatPanelWidget::attachDiagnostics(const QList<AgentDiagnostic> &diagnostic
 void ChatPanelWidget::onProviderRegistered(const QString &id)
 {
     Q_UNUSED(id)
+    refreshProviderList();
     refreshModelList();
     showWelcomeOrTranscript();
 }
@@ -1079,6 +1104,7 @@ void ChatPanelWidget::onProviderRegistered(const QString &id)
 void ChatPanelWidget::onProviderRemoved(const QString &id)
 {
     Q_UNUSED(id)
+    refreshProviderList();
     refreshModelList();
     showWelcomeOrTranscript();
 }
@@ -1086,8 +1112,28 @@ void ChatPanelWidget::onProviderRemoved(const QString &id)
 void ChatPanelWidget::onActiveProviderChanged(const QString &id)
 {
     Q_UNUSED(id)
+    refreshProviderList();
     refreshModelList();
     showWelcomeOrTranscript();
+}
+
+void ChatPanelWidget::refreshProviderList()
+{
+    if (!m_providerCombo || !m_orchestrator)
+        return;
+
+    QSignalBlocker blocker(m_providerCombo);
+    m_providerCombo->clear();
+
+    const auto providers = m_orchestrator->providers();
+    for (const IAgentProvider *p : providers)
+        m_providerCombo->addItem(p->displayName(), p->id());
+
+    if (const IAgentProvider *active = m_orchestrator->activeProvider()) {
+        const int idx = m_providerCombo->findData(active->id());
+        if (idx >= 0)
+            m_providerCombo->setCurrentIndex(idx);
+    }
 }
 
 void ChatPanelWidget::refreshModelList()

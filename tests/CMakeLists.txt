@@ -41,6 +41,21 @@ target_link_libraries(test_sseparser PRIVATE Qt6::Test Qt6::Widgets)
 target_include_directories(test_sseparser PRIVATE ${CMAKE_SOURCE_DIR}/plugins/common)
 add_test(NAME SseParser COMMAND test_sseparser)
 
+# ── OpenAI-compatible presets tests ──────────────────────────────────────────
+add_executable(test_openaicompatpresets
+    test_openaicompatpresets.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/byok/byokprovider.cpp
+    ${CMAKE_SOURCE_DIR}/plugins/byok/byokprovider.h
+    ${CMAKE_SOURCE_DIR}/src/agent/openaicompatpresets.h
+    ${CMAKE_SOURCE_DIR}/src/aiinterface.h
+)
+target_link_libraries(test_openaicompatpresets PRIVATE Qt6::Test Qt6::Widgets Qt6::Network)
+target_include_directories(test_openaicompatpresets PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/plugins/byok
+)
+add_test(NAME OpenAiCompatPresets COMMAND test_openaicompatpresets)
+
 # ── ThemeManager tests ─────────────────────────────────────────────────────────
 add_executable(test_thememanager
     test_thememanager.cpp

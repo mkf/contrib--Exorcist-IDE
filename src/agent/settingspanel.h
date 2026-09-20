@@ -37,6 +37,8 @@ public:
     QString customEndpoint() const;
     QString customApiKey() const;
     QString completionModel() const;
+    /// Key of the currently selected OpenAI-compatible preset.
+    QString activePreset() const;
 
     /// Populate the Tools tab with toggle checkboxes for each tool.
     void setToolNames(const QStringList &names);
@@ -77,6 +79,10 @@ private:
     // the wrapper widget the caller should add to its layout.
     QWidget *wrapCheckBoxWithBadge(const QString &key, QCheckBox *cb);
 
+    /// Load the active preset's saved endpoint/key into the fields and update
+    /// the endpoint placeholder to the preset's default.
+    void applyActivePresetToFields();
+
     void applyValueToEditor(QWidget *editor, EditorKind kind, const QVariant &v);
     QVariant editorValue(QWidget *editor, EditorKind kind) const;
     void writeFromEditor(const QString &key, QWidget *editor, EditorKind kind);
@@ -113,6 +119,7 @@ private:
     QSpinBox  *m_maxSteps;
     QSpinBox  *m_maxTokens;
     QComboBox *m_reasoningEffort;
+    QComboBox *m_presetCombo = nullptr;
     QLineEdit *m_customEndpoint;
     QLineEdit *m_customApiKey;
     QLineEdit *m_completionModel;

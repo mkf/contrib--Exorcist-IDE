@@ -128,6 +128,7 @@ private:
     void connectController();
     void connectTranscript();
     void refreshModelList();
+    void refreshProviderList();
     void showWelcomeOrTranscript();
     void updateSessionTitle();
     void startRequest(const QString &text, int mode, const QString &slashCmd = {});
@@ -154,6 +155,7 @@ private:
     QLabel                *m_sessionTitleLabel = nullptr;
     QToolButton           *m_newSessionHeaderBtn = nullptr;
     QToolButton           *m_gearHeaderBtn    = nullptr;
+    QComboBox             *m_providerCombo    = nullptr; // Qt path only
 
 #ifdef EXORCIST_HAS_ULTRALIGHT
     exorcist::UltralightWidget *m_ultralightView = nullptr;

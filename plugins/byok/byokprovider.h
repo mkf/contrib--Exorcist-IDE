@@ -1,21 +1,24 @@
 #pragma once
 
 #include "aiinterface.h"
+#include "agent/openaicompatpresets.h"
 
 #include <QNetworkAccessManager>
 #include <QPointer>
 #include <QString>
+#include <QStringList>
 
 class QNetworkReply;
 
-/// A simple OpenAI-compatible "Bring Your Own Key" provider.
-/// Reads endpoint URL and API key from QSettings AI/customEndpoint, AI/customApiKey.
+/// An OpenAI-compatible provider bound to one preset (OpenAI, Z.ai, OpenRouter
+/// or Custom). Endpoint and API key are read from / written to the preset
+/// namespace in QSettings via OpenAICompat helpers.
 class ByokProvider : public IAgentProvider
 {
     Q_OBJECT
 
 public:
-    explicit ByokProvider(QObject *parent = nullptr);
+    explicit ByokProvider(QString presetKey, QObject *parent = nullptr);
 
     QString           id()           const override;
     QString           displayName()  const override;
@@ -25,6 +28,7 @@ public:
     QStringList       availableModels() const override;
     QString           currentModel()    const override;
     void              setModel(const QString &model) override;
+    QList<ModelInfo>  modelInfoList() const override;
 
     void initialize() override;
     void shutdown()   override;
@@ -32,20 +36,29 @@ public:
     void sendRequest(const AgentRequest &request)  override;
     void cancelRequest(const QString &requestId)   override;
 
-    /// Reconfigure endpoint + API key at runtime (called by settings handler).
-    Q_INVOKABLE void configure(const QString &endpointUrl, const QString &apiKey);
+    /// Re-read endpoint/key/model from QSettings and refresh availability.
+    Q_INVOKABLE void reloadConfig();
+
+    /// The effective chat-completions endpoint (saved value or preset default).
+    QString effectiveEndpoint() const;
+    /// The API key for this preset.
+    QString apiKey() const;
 
 private:
     void connectReply(QNetworkReply *reply);
     void cleanupActiveReply();
+    void fetchModels();
     QString buildUserContent(const AgentRequest &req) const;
+    QString modelsUrl() const;
+
+    QString m_presetKey;
+    QString m_endpoint;     // saved (possibly empty)
+    QString m_apiKey;       // saved
+    QString m_model;        // selected model
+    QStringList m_models;   // discovered (persisted) model list
+    bool    m_available = false;
 
     QNetworkAccessManager m_nam;
-
-    QString m_endpointUrl;
-    QString m_apiKey;
-    QString m_model;
-    bool    m_available = false;
 
     QPointer<QNetworkReply> m_activeReply;
     QString        m_activeRequestId;

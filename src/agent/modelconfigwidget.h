@@ -37,7 +37,11 @@ signals:
                             const QString &extraHeaders);
 
 private:
+    QString activePreset() const;
+    void reloadPresetFields();
+
     QMap<QString, QComboBox *> m_modeComboBoxes;
+    QComboBox *m_presetCombo = nullptr;
     QLineEdit *m_endpointEdit;
     QLineEdit *m_apiKeyEdit;
     QLineEdit *m_headersEdit;

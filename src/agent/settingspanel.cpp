@@ -1,4 +1,5 @@
 #include "settingspanel.h"
+#include "agent/openaicompatpresets.h"
 #include "agent/chat/chatthemetokens.h"
 #include "settings/scopedsettings.h"
 #include "ui/thememanager.h"
@@ -432,10 +433,14 @@ void SettingsPanel::buildModelTab(QWidget *tab)
     m_completionModel->setPlaceholderText(tr("Leave empty to use the chat model"));
     lay->addRow(tr("Completion model:"), m_completionModel);
 
-    lay->addRow(new QLabel(tr("<b>Custom Endpoint (BYOK)</b>"), tab));
+    lay->addRow(new QLabel(tr("<b>OpenAI-compatible Provider</b>"), tab));
+
+    m_presetCombo = new QComboBox(tab);
+    for (const OpenAICompat::Preset &p : OpenAICompat::presets())
+        m_presetCombo->addItem(p.displayName, p.key);
+    lay->addRow(tr("Provider:"), m_presetCombo);
 
     m_customEndpoint = new QLineEdit(tab);
-    m_customEndpoint->setPlaceholderText(tr("https://api.openai.com/v1/chat/completions"));
     lay->addRow(tr("Endpoint URL:"), m_customEndpoint);
 
     m_customApiKey = new QLineEdit(tab);
@@ -456,15 +461,30 @@ void SettingsPanel::buildModelTab(QWidget *tab)
     trackControl(QStringLiteral("AI/maxTokens"),        m_maxTokens,        SpinBoxK,  labelOf(m_maxTokens));
     trackControl(QStringLiteral("AI/reasoningEffort"),  m_reasoningEffort,  ComboBoxK, labelOf(m_reasoningEffort));
     trackControl(QStringLiteral("AI/completionModel"),  m_completionModel,  LineEditK, labelOf(m_completionModel));
-    trackControl(QStringLiteral("AI/customEndpoint"),   m_customEndpoint,   LineEditK, labelOf(m_customEndpoint));
-    trackControl(QStringLiteral("AI/customApiKey"),     m_customApiKey,     LineEditK, labelOf(m_customApiKey));
+    // NOTE: the preset endpoint/key are per-preset (AI/OpenAICompatible/...)
+    // and are persisted directly below, not via the flat-key tracker.
     trackControl(QStringLiteral("AI/searxngUrl"),       m_searxngUrl,       LineEditK, labelOf(m_searxngUrl));
 
     connect(m_maxSteps,        &QSpinBox::valueChanged,         this, [this]() { writeFromEditor(QStringLiteral("AI/maxSteps"),        m_maxSteps,        SpinBoxK);  emit settingsChanged(); });
     connect(m_maxTokens,       &QSpinBox::valueChanged,         this, [this]() { writeFromEditor(QStringLiteral("AI/maxTokens"),       m_maxTokens,       SpinBoxK);  emit settingsChanged(); });
     connect(m_reasoningEffort, &QComboBox::currentIndexChanged, this, [this]() { writeFromEditor(QStringLiteral("AI/reasoningEffort"), m_reasoningEffort, ComboBoxK); emit settingsChanged(); });
-    connect(m_customEndpoint,  &QLineEdit::editingFinished,     this, [this]() { writeFromEditor(QStringLiteral("AI/customEndpoint"),  m_customEndpoint,  LineEditK); emit settingsChanged(); });
-    connect(m_customApiKey,    &QLineEdit::editingFinished,     this, [this]() { writeFromEditor(QStringLiteral("AI/customApiKey"),    m_customApiKey,    LineEditK); emit settingsChanged(); });
+    connect(m_presetCombo,     &QComboBox::currentIndexChanged, this, [this]() {
+        QSettings s;
+        OpenAICompat::saveActivePreset(s, activePreset());
+        applyActivePresetToFields();
+        emit settingsChanged();
+    });
+    connect(m_customEndpoint,  &QLineEdit::editingFinished,     this, [this]() {
+        QSettings s;
+        OpenAICompat::saveEndpoint(s, activePreset(), m_customEndpoint->text());
+        applyActivePresetToFields();
+        emit settingsChanged();
+    });
+    connect(m_customApiKey,    &QLineEdit::editingFinished,     this, [this]() {
+        QSettings s;
+        OpenAICompat::saveApiKey(s, activePreset(), m_customApiKey->text());
+        emit settingsChanged();
+    });
     connect(m_completionModel, &QLineEdit::editingFinished,     this, [this]() { writeFromEditor(QStringLiteral("AI/completionModel"), m_completionModel, LineEditK); emit settingsChanged(); });
     connect(m_searxngUrl,      &QLineEdit::editingFinished,     this, [this]() { writeFromEditor(QStringLiteral("AI/searxngUrl"),      m_searxngUrl,      LineEditK); emit settingsChanged(); });
 }
@@ -623,8 +643,15 @@ void SettingsPanel::loadSettings()
     setInt(m_maxSteps,           S.value(QStringLiteral("AI/maxSteps"), 20).toInt());
     setInt(m_maxTokens,          S.value(QStringLiteral("AI/maxTokens"), 16384).toInt());
     setIdx(m_reasoningEffort,    S.value(QStringLiteral("AI/reasoningEffort"), 2).toInt());
-    setText(m_customEndpoint,    S.value(QStringLiteral("AI/customEndpoint")).toString());
-    setText(m_customApiKey,      S.value(QStringLiteral("AI/customApiKey")).toString());
+    if (m_presetCombo) {
+        QSettings ps;
+        const QString key = OpenAICompat::loadActivePreset(ps);
+        const int idx = m_presetCombo->findData(key);
+        QSignalBlocker b(m_presetCombo);
+        m_presetCombo->setCurrentIndex(
+            idx >= 0 ? idx : m_presetCombo->findData(QStringLiteral("custom")));
+    }
+    applyActivePresetToFields();
     setText(m_completionModel,   S.value(QStringLiteral("AI/completionModel")).toString());
     setText(m_searxngUrl,        S.value(QStringLiteral("AI/searxngUrl")).toString());
 
@@ -656,8 +683,6 @@ void SettingsPanel::saveSettings()
     s.setValue(QStringLiteral("maxSteps"), m_maxSteps->value());
     s.setValue(QStringLiteral("maxTokens"), m_maxTokens->value());
     s.setValue(QStringLiteral("reasoningEffort"), m_reasoningEffort->currentIndex());
-    s.setValue(QStringLiteral("customEndpoint"), m_customEndpoint->text());
-    s.setValue(QStringLiteral("customApiKey"), m_customApiKey->text());
     s.setValue(QStringLiteral("completionModel"), m_completionModel->text());
     s.setValue(QStringLiteral("searxngUrl"), m_searxngUrl->text());
 
@@ -669,6 +694,14 @@ void SettingsPanel::saveSettings()
     s.setValue(QStringLiteral("disabledTools"), disabledTools());
 
     s.endGroup();
+
+    // OpenAI-compatible preset (absolute keys — outside the "AI" group above).
+    {
+        QSettings ps;
+        OpenAICompat::saveActivePreset(ps, activePreset());
+        OpenAICompat::saveEndpoint(ps, activePreset(), m_customEndpoint->text());
+        OpenAICompat::saveApiKey(ps, activePreset(), m_customApiKey->text());
+    }
 
     // Appearance & Editor — top-level keys (shared with ThemeManager / AutoSaveManager)
     if (m_darkTheme)
@@ -719,6 +752,37 @@ QString SettingsPanel::customEndpoint() const
 QString SettingsPanel::customApiKey() const
 {
     return m_customApiKey->text().trimmed();
+}
+
+QString SettingsPanel::activePreset() const
+{
+    if (!m_presetCombo)
+        return QStringLiteral("custom");
+    const QString key = m_presetCombo->currentData().toString();
+    return key.isEmpty() ? QStringLiteral("custom") : key;
+}
+
+void SettingsPanel::applyActivePresetToFields()
+{
+    const QString key = activePreset();
+    QSettings s;
+
+    if (m_customEndpoint) {
+        QSignalBlocker b(m_customEndpoint);
+        m_customEndpoint->setText(OpenAICompat::loadEndpoint(s, key));
+    }
+    if (m_customApiKey) {
+        QSignalBlocker b(m_customApiKey);
+        m_customApiKey->setText(OpenAICompat::loadApiKey(s, key));
+    }
+
+    const OpenAICompat::Preset *p = OpenAICompat::presetByKey(key);
+    if (m_customEndpoint) {
+        const QString hint = (p && !p->defaultEndpoint.isEmpty())
+            ? p->defaultEndpoint
+            : QStringLiteral("https://api.example.com/v1/chat/completions");
+        m_customEndpoint->setPlaceholderText(hint);
+    }
 }
 
 QString SettingsPanel::completionModel() const

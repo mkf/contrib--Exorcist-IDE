@@ -28,4 +28,4 @@ endif()
 add_subdirectory(claude)
 # add_subdirectory(codex)    # disabled — Copilot-first
 # add_subdirectory(ollama)   # disabled — Copilot-first
-# add_subdirectory(byok)     # disabled — Copilot-first
+add_subdirectory(byok)       # OpenAI-compatible presets (OpenAI / Z.ai / OpenRouter / Custom)
