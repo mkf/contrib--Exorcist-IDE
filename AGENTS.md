@@ -38,6 +38,12 @@ Below are the non-obvious facts worth knowing up front.
   (required). Debug `miDebuggerPath` is a version-specific Nix store path;
   refresh with `nix develop --command which gdb` after a devShell bump.
 
+## Scope rules
+- **Never touch the Ultralight UI** — `src/resources/chat/chat.html`,
+  `src/resources/chat/chat.js`, and any other Ultralight-rendered surface.
+  Exclude it from every proposal/change (no edits, not merely no wording) and
+  record it as out of scope; it is handled separately.
+
 ## Conventions
 - Commit prefixes: `ai:`, `dev:`, `openspec:`.
 - OpenSpec planning lives in `openspec/changes/<name>/`; run its CLI per above.
