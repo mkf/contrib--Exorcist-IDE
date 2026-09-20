@@ -21,8 +21,8 @@ add_subdirectory(qt-tools)
 add_subdirectory(serial-monitor)
 add_subdirectory(automation)
 add_subdirectory(devops)
-# javascript-sdk hard-depends on the bundled Ultralight SDK
-if(EXORCIST_USE_ULTRALIGHT)
+# javascript-sdk: headless runtime needs JavaScriptCore; HTML views need Ultralight
+if(EXORCIST_HAS_JAVASCRIPTCORE)
     add_subdirectory(javascript-sdk)
 endif()
 add_subdirectory(claude)

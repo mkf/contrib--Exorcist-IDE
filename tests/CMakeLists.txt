@@ -614,8 +614,12 @@ add_test(NAME AgentUIBus COMMAND test_agentuibus)
 
 # ── HTTP/2 Hardening tests ────────────────────────────────────────────────────
 
-# ── JsPluginRuntime tests (Ultralight-dependent) ──────────────────────────────
-if(EXORCIST_USE_ULTRALIGHT)
+# ── JsPluginRuntime tests (headless; needs a JavaScriptCore provider) ─────────
+# These exercise pure JS execution (loading, permissions, commands, events,
+# reload) and do not use the Ultralight renderer. They build whenever a
+# JavaScriptCore provider is available — the Ultralight SDK when enabled, or a
+# system JavaScriptCore otherwise.
+if(EXORCIST_HAS_JAVASCRIPTCORE)
     add_executable(test_jspluginruntime
         test_jspluginruntime.cpp
         ${CMAKE_SOURCE_DIR}/plugins/javascript-sdk/jspluginruntime.cpp
@@ -623,15 +627,17 @@ if(EXORCIST_USE_ULTRALIGHT)
         ${CMAKE_SOURCE_DIR}/plugins/javascript-sdk/jshostapi.cpp
         ${CMAKE_SOURCE_DIR}/plugins/javascript-sdk/jshostapi.h
     )
-    target_link_libraries(test_jspluginruntime PRIVATE Qt6::Test Qt6::Widgets ultralight-sdk)
+    target_link_libraries(test_jspluginruntime PRIVATE Qt6::Test Qt6::Widgets javascriptcore)
     target_include_directories(test_jspluginruntime PRIVATE
         ${CMAKE_SOURCE_DIR}/plugins/javascript-sdk
         ${CMAKE_SOURCE_DIR}/src/sdk
         ${CMAKE_SOURCE_DIR}/src
     )
     add_test(NAME JsPluginRuntime COMMAND test_jspluginruntime)
+endif()
 
-    # ── Ultralight widget tests ───────────────────────────────────────────────
+# ── Ultralight widget tests (require the Ultralight renderer) ─────────────────
+if(EXORCIST_USE_ULTRALIGHT)
     add_executable(test_ultralightwidget
         test_ultralightwidget.cpp
         ${CMAKE_SOURCE_DIR}/src/agent/chat/ultralight/ultralightengine.cpp
