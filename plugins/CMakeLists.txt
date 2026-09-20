@@ -21,7 +21,10 @@ add_subdirectory(qt-tools)
 add_subdirectory(serial-monitor)
 add_subdirectory(automation)
 add_subdirectory(devops)
-# disabled: hard-depends on bundled Ultralight SDK
+# javascript-sdk hard-depends on the bundled Ultralight SDK
+if(EXORCIST_USE_ULTRALIGHT)
+    add_subdirectory(javascript-sdk)
+endif()
 add_subdirectory(claude)
 # add_subdirectory(codex)    # disabled — Copilot-first
 # add_subdirectory(ollama)   # disabled — Copilot-first

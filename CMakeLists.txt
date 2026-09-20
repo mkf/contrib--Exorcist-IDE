@@ -178,6 +178,8 @@ add_subdirectory(server)
 add_subdirectory(plugins)
 add_subdirectory(components)
 
+enable_testing()
+add_subdirectory(tests)
 
 # ── Source Graph reindex after build ─────────────────────────────────────────
 option(EXORCIST_REINDEX_AFTER_BUILD "Run source_graph incremental reindex after build" ON)
