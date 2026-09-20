@@ -21,7 +21,7 @@ add_subdirectory(qt-tools)
 add_subdirectory(serial-monitor)
 add_subdirectory(automation)
 add_subdirectory(devops)
-add_subdirectory(javascript-sdk)
+# disabled: hard-depends on bundled Ultralight SDK
 add_subdirectory(claude)
 # add_subdirectory(codex)    # disabled — Copilot-first
 # add_subdirectory(ollama)   # disabled — Copilot-first
