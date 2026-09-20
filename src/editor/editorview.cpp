@@ -2038,7 +2038,7 @@ void EditorView::contextMenuEvent(QContextMenuEvent *event)
     {
         menu->insertSeparator(menu->actions().isEmpty() ? nullptr : menu->actions().first());
 
-        QMenu *aiMenu = new QMenu(tr("Copilot"), menu);
+        QMenu *aiMenu = new QMenu(tr("AI Assistant"), menu);
         const QString sel = textCursor().selectedText();
         const QString fp  = property("filePath").toString();
 

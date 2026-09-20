@@ -19,27 +19,27 @@ void AuthStatusIndicator::setState(State s)
     m_state = s;
     switch (s) {
     case SignedOut:
-        m_label->setText(QStringLiteral("\u26AA Copilot"));
+        m_label->setText(QStringLiteral("\u26AA Exorcist AI"));
         m_label->setToolTip(tr("Not signed in — click to sign in"));
         break;
     case SigningIn:
-        m_label->setText(QStringLiteral("\u23F3 Copilot"));
+        m_label->setText(QStringLiteral("\u23F3 Exorcist AI"));
         m_label->setToolTip(tr("Signing in..."));
         break;
     case SignedIn:
-        m_label->setText(QStringLiteral("\U0001F7E2 Copilot"));
+        m_label->setText(QStringLiteral("\U0001F7E2 Exorcist AI"));
         m_label->setToolTip(tr("Signed in"));
         break;
     case Expired:
-        m_label->setText(QStringLiteral("\U0001F7E1 Copilot"));
+        m_label->setText(QStringLiteral("\U0001F7E1 Exorcist AI"));
         m_label->setToolTip(tr("Token expired — click to sign in again"));
         break;
     case RateLimited:
-        m_label->setText(QStringLiteral("\U0001F534 Copilot"));
+        m_label->setText(QStringLiteral("\U0001F534 Exorcist AI"));
         m_label->setToolTip(tr("Rate limited — retry later"));
         break;
     case Offline:
-        m_label->setText(QStringLiteral("\u26AB Copilot"));
+        m_label->setText(QStringLiteral("\u26AB Exorcist AI"));
         m_label->setToolTip(tr("Offline — no network connection"));
         break;
     }

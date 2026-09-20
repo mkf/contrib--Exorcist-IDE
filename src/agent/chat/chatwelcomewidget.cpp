@@ -43,7 +43,7 @@ void ChatWelcomeWidget::showState(State state)
         buildBannerState(
             QStringLiteral("\U0001F512"),
             tr("Sign In Required"),
-            tr("Sign in with your GitHub account to use Copilot."),
+            tr("Sign in to use the AI assistant."),
             ChatTheme::WarningFg,
             State::AuthRequired);
         break;
@@ -92,7 +92,7 @@ void ChatWelcomeWidget::buildDefaultWelcome(bool disabled)
     icon->setAlignment(Qt::AlignCenter);
     m_layout->addWidget(icon);
 
-    auto *title = new QLabel(disabled ? tr("No Provider Configured") : tr("Ask Copilot"), this);
+    auto *title = new QLabel(disabled ? tr("No Provider Configured") : tr("Ask AI Assistant"), this);
     title->setStyleSheet(
         QStringLiteral("color:%1; font-size:15px; font-weight:600;")
             .arg(disabled ? ChatTheme::FgDimmed : ChatTheme::FgPrimary));

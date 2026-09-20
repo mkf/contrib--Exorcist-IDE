@@ -897,6 +897,23 @@ target_include_directories(test_themeregression PRIVATE
     ${CMAKE_SOURCE_DIR}/plugins/start-page)
 add_test(NAME ThemeRegression COMMAND test_themeregression)
 
+# ── AI assistant branding tests ──────────────────────────────────────────────
+# The provider-neutral AI surfaces must expose "Exorcist AI" / "AI Assistant"
+# and must never display "Copilot".
+add_executable(test_aibranding
+    test_aibranding.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/authstatusindicator.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/authstatusindicator.h
+    ${CMAKE_SOURCE_DIR}/src/agent/chat/chatwelcomewidget.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/chat/chatwelcomewidget.h
+)
+target_link_libraries(test_aibranding PRIVATE Qt6::Test Qt6::Widgets)
+target_include_directories(test_aibranding PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/agent
+    ${CMAKE_SOURCE_DIR}/src/agent/chat)
+add_test(NAME AiBranding COMMAND test_aibranding)
+
 # Deploy Qt DLLs so tests can run (Windows)
 if(WIN32 AND EXORCIST_DEPLOY_QT)
     find_program(WINDEPLOYQT windeployqt HINTS "${CMAKE_PREFIX_PATH}/bin")

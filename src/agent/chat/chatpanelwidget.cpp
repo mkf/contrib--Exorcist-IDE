@@ -364,7 +364,7 @@ void ChatPanelWidget::buildUi()
         QStringLiteral("color:%1; font-size:12px; font-weight:600; background:transparent;")
             .arg(ChatTheme::FgPrimary));
     m_sessionTitleLabel->setTextFormat(Qt::PlainText);
-    m_sessionTitleLabel->setText(tr("Copilot"));
+    m_sessionTitleLabel->setText(tr("Exorcist AI"));
 
     headerLayout->addWidget(m_sessionTitleLabel, 1);
 
@@ -1287,8 +1287,8 @@ void ChatPanelWidget::setToolCount(int count)
 void ChatPanelWidget::updateSessionTitle()
 {
     const QString title = m_sessionModel->isEmpty()
-        ? tr("Copilot")
-        : (m_sessionModel->title().isEmpty() ? tr("Copilot") : m_sessionModel->title());
+        ? tr("Exorcist AI")
+        : (m_sessionModel->title().isEmpty() ? tr("Exorcist AI") : m_sessionModel->title());
 #ifdef EXORCIST_HAS_ULTRALIGHT
     m_jsBridge->setSessionTitle(title);
 #else

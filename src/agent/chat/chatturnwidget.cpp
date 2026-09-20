@@ -169,7 +169,7 @@ ChatTurnWidget::ChatTurnWidget(const ChatTurnModel &turn, QWidget *parent)
             .arg(ChatTheme::AvatarAiBg)
             .arg(ChatTheme::AvatarRadius));
 
-    auto *assistName = new QLabel(tr("Copilot"), this);
+    auto *assistName = new QLabel(tr("Exorcist AI"), this);
     assistName->setStyleSheet(
         QStringLiteral("color:%1; font-weight:600; font-size:12px;")
             .arg(ChatTheme::FgPrimary));
