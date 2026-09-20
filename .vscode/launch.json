@@ -1,0 +1,97 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Exorcist: Debug (gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build-tests/src/exorcist",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "QT_QPA_PLATFORM",
+          "value": "xcb"
+        }
+      ],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      // gdb lives in the Nix devshell, which VS Code does not inherit
+      // automatically. This store path comes from `nix develop`.
+      // If the devshell is updated and this path goes stale, refresh it with:
+      //   nix develop --command which gdb
+      "miDebuggerPath": "/nix/store/2xrxnqpkwlr4smxwhg5x34s2nbs2rpi6-gdb-17.2/bin/gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "cmake: build exorcist"
+    },
+    {
+      "name": "Exorcist: Run (no debugger)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build-tests/src/exorcist",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "QT_QPA_PLATFORM",
+          "value": "xcb"
+        }
+      ],
+      "externalConsole": false,
+      // noDebug: true runs the program without spawning gdb.
+      "noDebug": true,
+      "preLaunchTask": "cmake: build exorcist"
+    },
+    {
+      "name": "Exorcist: Run headless (offscreen)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build-tests/src/exorcist",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "QT_QPA_PLATFORM",
+          "value": "offscreen"
+        }
+      ],
+      "externalConsole": false,
+      "noDebug": true,
+      "preLaunchTask": "cmake: build exorcist"
+    },
+    {
+      "name": "Tests: OpenAiCompatPresets (gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/build-tests/tests/test_openaicompatpresets",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/build-tests",
+      "environment": [
+        {
+          "name": "QT_QPA_PLATFORM",
+          "value": "offscreen"
+        }
+      ],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/nix/store/2xrxnqpkwlr4smxwhg5x34s2nbs2rpi6-gdb-17.2/bin/gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}

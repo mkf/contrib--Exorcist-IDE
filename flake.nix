@@ -14,6 +14,7 @@
           cmake
           ninja
           gcc
+          gdb
           gnumake
           pkg-config
           git

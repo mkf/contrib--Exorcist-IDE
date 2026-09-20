@@ -1,0 +1,81 @@
+{
+  // Tasks run in VS Code's own environment, which is NOT the Nix devshell.
+  // Every command is therefore wrapped with `nix develop --command ...` so it
+  // executes inside the flake devShell (cmake, ninja, gcc, Qt, gdb).
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cmake: build exorcist",
+      "detail": "Build the exorcist IDE binary in build-tests/ (inside nix develop)",
+      "type": "shell",
+      "command": "nix",
+      "args": [
+        "develop",
+        "--command",
+        "cmake",
+        "--build",
+        "${workspaceFolder}/build-tests",
+        "--target",
+        "exorcist",
+        "-j4"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
+    },
+    {
+      "label": "cmake: configure (build-tests)",
+      "detail": "Run a fresh CMake configure into build-tests/ (inside nix develop)",
+      "type": "shell",
+      "command": "nix",
+      "args": [
+        "develop",
+        "--command",
+        "cmake",
+        "-S",
+        "${workspaceFolder}",
+        "-B",
+        "${workspaceFolder}/build-tests"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "cmake: build exorcist + byok plugin",
+      "detail": "Build the IDE and the OpenAI-compatible provider plugin (inside nix develop)",
+      "type": "shell",
+      "command": "nix",
+      "args": [
+        "develop",
+        "--command",
+        "cmake",
+        "--build",
+        "${workspaceFolder}/build-tests",
+        "--target",
+        "exorcist",
+        "byok_plugin",
+        "-j4"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    }
+  ]
+}
