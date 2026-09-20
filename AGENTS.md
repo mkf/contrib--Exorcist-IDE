@@ -46,4 +46,5 @@ Below are the non-obvious facts worth knowing up front.
 
 ## Conventions
 - Commit prefixes: `ai:`, `dev:`, `openspec:`.
+- When told to commit, commit the openspec artifacts before or (if per actual chronology) after the "apply" implementation result
 - OpenSpec planning lives in `openspec/changes/<name>/`; run its CLI per above.
