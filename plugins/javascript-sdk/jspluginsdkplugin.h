@@ -1,12 +1,10 @@
 #pragma once
 
 #include <QObject>
-#include <QHash>
 #include <QString>
 
 #include "plugininterface.h"
 
-class QWidget;
 class IHostServices;
 namespace jssdk { class JsPluginRuntime; }
 
@@ -22,9 +20,6 @@ public:
     void shutdown() override;
 
 private:
-    void registerHtmlPluginViews();
-
     IHostServices *m_host = nullptr;
     std::unique_ptr<jssdk::JsPluginRuntime> m_runtime;
-    QHash<QString, QWidget *> m_htmlViews; // viewId → widget (IDE owns)
 };

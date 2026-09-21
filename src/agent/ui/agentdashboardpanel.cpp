@@ -2,16 +2,8 @@
 #include "dashboardjsbridge.h"
 
 #include <QVBoxLayout>
-#include <QFile>
-
-#ifdef EXORCIST_HAS_ULTRALIGHT
-#include "../chat/ultralight/ultralightwidget.h"
-#endif
-
-#ifndef EXORCIST_HAS_ULTRALIGHT
 #include <QLabel>
 #include <QListWidget>
-#endif
 
 AgentDashboardPanel::AgentDashboardPanel(QWidget *parent)
     : QWidget(parent)
@@ -25,42 +17,7 @@ void AgentDashboardPanel::buildUi()
     m_layout->setContentsMargins(0, 0, 0, 0);
     m_layout->setSpacing(0);
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    // ── Ultralight HTML path ─────────────────────────────────────────────
-    m_ultralightView = new exorcist::UltralightWidget(this);
-    m_ultralightView->setReadyProbe(QStringLiteral("dashboardBridge"));
-    m_bridge = new DashboardJSBridge(m_ultralightView, this);
-
-    connect(m_bridge, &DashboardJSBridge::openArtifactRequested,
-            this, [this](const QString &path, const QString &) {
-                Q_EMIT openFileRequested(path);
-            });
-
-    {
-        auto loadRes = [](const QString &path) -> QString {
-            QFile f(path);
-            if (!f.open(QIODevice::ReadOnly)) {
-                qWarning("DashboardPanel: failed to load resource %s", qPrintable(path));
-                return {};
-            }
-            return QString::fromUtf8(f.readAll());
-        };
-
-        const QString css  = loadRes(QStringLiteral(":/dashboard/dashboard.css"));
-        const QString js   = loadRes(QStringLiteral(":/dashboard/dashboard.js"));
-        QString html       = loadRes(QStringLiteral(":/dashboard/dashboard.html"));
-
-        html.replace(QLatin1String("%STYLE%"), css);
-        html.replace(QLatin1String("%SCRIPT%"), js);
-
-        // loadHTML uses about:blank + JS injection (no temp files needed)
-        m_ultralightView->loadHTML(html);
-    }
-
-    m_layout->addWidget(m_ultralightView);
-
-#else
-    // ── QWidget fallback path ────────────────────────────────────────────
+    // ── QWidget path ─────────────────────────────────────────────────────
     m_bridge = new DashboardJSBridge(this);
 
     setStyleSheet(QStringLiteral(
@@ -96,17 +53,11 @@ void AgentDashboardPanel::buildUi()
 
     m_logsList = new QListWidget(this);
     m_layout->addWidget(m_logsList, 2);
-#endif
 }
 
 void AgentDashboardPanel::handleEvent(const AgentUIEvent &event)
 {
-    const QString typeName = eventTypeName(event.type);
-
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_bridge->pushEvent(typeName, event.missionId, event.timestamp, event.payload);
-#else
-    // QWidget fallback — minimal rendering
+    // QWidget rendering
     if (!m_stepsList || !m_logsList)
         return;
     const QString msg = event.payload.value(QStringLiteral("message")).toString();
@@ -171,19 +122,14 @@ void AgentDashboardPanel::handleEvent(const AgentUIEvent &event)
     case AgentUIEventType::CustomEvent:
         break;
     }
-#endif
 }
 
 void AgentDashboardPanel::clearDashboard()
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_bridge->clearDashboard();
-#else
     m_titleLabel->setText(tr("Agent Dashboard"));
     m_statusLabel->setText(QStringLiteral("idle"));
     m_stepsList->clear();
     m_logsList->clear();
-#endif
 }
 
 bool AgentDashboardPanel::isActive() const

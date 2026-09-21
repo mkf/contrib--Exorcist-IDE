@@ -15,8 +15,8 @@ ExDockWidget::ExDockWidget(const QString &title, QWidget *parent)
     // reparents it into a QStackedWidget (via insertWidget), Qt uses
     // Win32 SetParent() on our HWND rather than traversing our children
     // and reparenting their HWNDs individually. Without this, any
-    // WA_NativeWindow child (e.g. UltralightWidget) would have its HWND
-    // moved separately, which corrupts Qt's internal widget state on
+    // WA_NativeWindow child would have its HWND moved separately, which
+    // corrupts Qt's internal widget state on
     // Windows (RBP=1 / READ at 0xFFFF… crash).
     setAttribute(Qt::WA_NativeWindow);
 

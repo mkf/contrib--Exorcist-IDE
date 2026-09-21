@@ -2,33 +2,10 @@
 
 #include <QJsonDocument>
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-#include "../chat/ultralight/ultralightwidget.h"
-#endif
-
-#ifdef EXORCIST_HAS_ULTRALIGHT
-
-DashboardJSBridge::DashboardJSBridge(exorcist::UltralightWidget *view,
-                                      QObject *parent)
-    : QObject(parent), m_view(view)
-{
-    m_view->registerJSCallback(QStringLiteral("openArtifact"),
-        [this](const QJsonValue &v) {
-            const auto obj = v.toObject();
-            Q_EMIT openArtifactRequested(
-                obj.value(QStringLiteral("path")).toString(),
-                obj.value(QStringLiteral("type")).toString());
-        });
-}
-
-#else
-
 DashboardJSBridge::DashboardJSBridge(QObject *parent)
     : QObject(parent)
 {
 }
-
-#endif
 
 void DashboardJSBridge::pushEvent(const QString &typeName,
                                    const QString &missionId,
@@ -65,10 +42,5 @@ void DashboardJSBridge::setTheme(const QJsonObject &themeTokens)
 
 void DashboardJSBridge::eval(const QString &js)
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    if (m_view)
-        m_view->evaluateScript(js);
-#else
     Q_UNUSED(js);
-#endif
 }

@@ -41,14 +41,8 @@
 #include "toolpresentationformatter.h"
 #include "ui/notificationtoast.h"
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-#include "ultralight/ultralightwidget.h"
-#include "ultralight/chatjsbridge.h"
-#include <QFile>
-#else
 #include "chattranscriptview.h"
 #include "chatwelcomewidget.h"
-#endif
 
 namespace {
 
@@ -100,20 +94,12 @@ ChatPanelWidget::ChatPanelWidget(AgentOrchestrator *orchestrator,
         if (!m_deltaBuffer.isEmpty()) {
             const QString buf = m_deltaBuffer;
             m_deltaBuffer.clear();
-#ifdef EXORCIST_HAS_ULTRALIGHT
-            m_jsBridge->appendMarkdownDelta(idx, buf);
-#else
             m_transcript->appendMarkdownDelta(idx, buf);
-#endif
         }
         if (!m_thinkingDeltaBuffer.isEmpty()) {
             const QString buf = m_thinkingDeltaBuffer;
             m_thinkingDeltaBuffer.clear();
-#ifdef EXORCIST_HAS_ULTRALIGHT
-            m_jsBridge->appendThinkingDelta(idx, buf);
-#else
             m_transcript->appendThinkingDelta(idx, buf);
-#endif
         }
         if (m_deltaBuffer.isEmpty() && m_thinkingDeltaBuffer.isEmpty())
             m_deltaFlushTimer->stop();
@@ -134,213 +120,6 @@ void ChatPanelWidget::buildUi()
     m_rootLayout->setContentsMargins(0, 0, 0, 0);
     m_rootLayout->setSpacing(0);
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    // ── Full-HTML path: single Ultralight WebView fills the entire panel ────
-    m_ultralightView = new exorcist::UltralightWidget(this);
-    m_jsBridge = new exorcist::ChatJSBridge(m_ultralightView, this);
-
-    {
-        auto loadRes = [](const QString &path) -> QString {
-            QFile f(path);
-            if (!f.open(QIODevice::ReadOnly)) {
-                qWarning("ChatPanel: failed to load resource %s", qPrintable(path));
-                return {};
-            }
-            return QString::fromUtf8(f.readAll());
-        };
-        const QString css        = loadRes(QStringLiteral(":/chat/chat.css"));
-        const QString markdownJs = loadRes(QStringLiteral(":/chat/markdown.js"));
-        const QString chatJs     = loadRes(QStringLiteral(":/chat/chat.js"));
-        QString htmlTemplate     = loadRes(QStringLiteral(":/chat/chat.html"));
-
-        // Inject CSS and JS into the HTML template via placeholders
-        htmlTemplate.replace(QLatin1String("%STYLE%"), css);
-        htmlTemplate.replace(QLatin1String("%MARKDOWN_JS%"), markdownJs);
-        htmlTemplate.replace(QLatin1String("%CHAT_JS%"), chatJs);
-
-        // loadHTML uses about:blank + JS injection (no temp files needed)
-        m_ultralightView->loadHTML(htmlTemplate);
-    }
-
-    // Apply theme once DOM is ready
-    connect(m_ultralightView, &exorcist::UltralightWidget::domReady,
-            this, [this]() {
-        QJsonObject theme;
-        const bool dark = ChatTheme::isDark();
-        theme[QStringLiteral("panelBg")]       = dark ? ChatTheme::PanelBg : ChatTheme::L_PanelBg;
-        theme[QStringLiteral("editorBg")]      = dark ? ChatTheme::EditorBg : ChatTheme::L_EditorBg;
-        theme[QStringLiteral("fgPrimary")]     = dark ? ChatTheme::FgPrimary : ChatTheme::L_FgPrimary;
-        theme[QStringLiteral("fgSecondary")]   = dark ? ChatTheme::FgSecondary : ChatTheme::L_FgSecondary;
-        theme[QStringLiteral("fgDimmed")]      = dark ? ChatTheme::FgDimmed : ChatTheme::L_FgDimmed;
-        theme[QStringLiteral("fgBright")]      = dark ? ChatTheme::FgBright : ChatTheme::L_FgBright;
-        theme[QStringLiteral("border")]        = dark ? ChatTheme::Border : ChatTheme::L_Border;
-        theme[QStringLiteral("sepLine")]       = dark ? ChatTheme::SepLine : ChatTheme::L_SepLine;
-        theme[QStringLiteral("hoverBg")]       = dark ? ChatTheme::HoverBg : ChatTheme::L_HoverBg;
-        theme[QStringLiteral("codeBg")]        = dark ? ChatTheme::CodeBg : ChatTheme::L_CodeBg;
-        theme[QStringLiteral("codeHeaderBg")]  = dark ? ChatTheme::CodeHeaderBg : ChatTheme::L_CodeHeaderBg;
-        theme[QStringLiteral("thinkingBg")]    = dark ? ChatTheme::ThinkingBg : ChatTheme::L_ThinkingBg;
-        theme[QStringLiteral("thinkingBorder")]= dark ? ChatTheme::ThinkingBorder : ChatTheme::L_ThinkingBorder;
-        theme[QStringLiteral("thinkingFg")]    = dark ? ChatTheme::ThinkingFg : ChatTheme::L_ThinkingFg;
-        theme[QStringLiteral("scrollTrack")]   = dark ? ChatTheme::ScrollTrack : ChatTheme::L_ScrollTrack;
-        theme[QStringLiteral("scrollThumb")]   = dark ? ChatTheme::ScrollHandle : ChatTheme::L_ScrollHandle;
-        m_jsBridge->setTheme(theme);
-    });
-
-    m_rootLayout->addWidget(m_ultralightView, 1);
-
-    // ── Wire JS→C++ signals for input, header, changes bar ─────────
-    connect(m_jsBridge, &exorcist::ChatJSBridge::sendRequested,
-            this, &ChatPanelWidget::onSend);
-    connect(m_jsBridge, &exorcist::ChatJSBridge::cancelRequested,
-            this, &ChatPanelWidget::onCancel);
-    connect(m_jsBridge, &exorcist::ChatJSBridge::newSessionRequested,
-            this, &ChatPanelWidget::onNewSession);
-    connect(m_jsBridge, &exorcist::ChatJSBridge::historyRequested,
-            this, &ChatPanelWidget::onShowHistory);
-    connect(m_jsBridge, &exorcist::ChatJSBridge::settingsRequested,
-            this, &ChatPanelWidget::settingsRequested);
-    connect(m_jsBridge, &exorcist::ChatJSBridge::modeChanged,
-            this, [this](int mode) {
-        m_currentMode = mode;
-        if (m_agentController) {
-            m_agentController->setSystemPrompt(AgentModes::systemPromptForMode(mode));
-            m_agentController->setMaxToolPermission(AgentModes::maxPermissionForMode(mode));
-        }
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::modelSelected,
-            this, [this](const QString &modelId) {
-        if (auto *active = m_orchestrator->activeProvider()) {
-            active->setModel(modelId);
-            m_jsBridge->setCurrentModel(modelId);
-            m_jsBridge->setThinkingVisible(
-                modelSupportsThinking(active, m_modelRegistry, modelId));
-        }
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::thinkingToggled,
-            this, [this](bool enabled) {
-        m_thinkingEnabled = enabled;
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::attachFileRequested,
-            this, [this]() {
-        const QString path = QFileDialog::getOpenFileName(
-            this, tr("Attach File"), m_workspaceRoot,
-            tr("All Files (*.*)"));
-        if (path.isEmpty()) return;
-
-        const QFileInfo fi(path);
-        const int idx = m_pendingFileAttachments.size();
-        m_pendingFileAttachments.append(path);
-        m_jsBridge->addAttachmentChip(fi.fileName(), idx);
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::removeAttachmentRequested,
-            this, [this](int index) {
-        if (index < 0 || index >= m_pendingFileAttachments.size())
-            return;
-        m_pendingFileAttachments.removeAt(index);
-        m_jsBridge->clearAttachmentChips();
-        for (int i = 0; i < m_pendingFileAttachments.size(); ++i) {
-            const QFileInfo fi(m_pendingFileAttachments[i]);
-            m_jsBridge->addAttachmentChip(fi.fileName(), i);
-        }
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::mentionQueryRequested,
-            this, [this](const QString &trigger, const QString &filter) {
-        QJsonArray items;
-        const QString lower = filter.toLower();
-
-        if (trigger == QLatin1String("@")) {
-            if (!m_workspaceFileFn) {
-                m_jsBridge->setMentionItems(trigger, items);
-                return;
-            }
-            const QStringList files = m_workspaceFileFn();
-            int shown = 0;
-            for (const QString &absPath : files) {
-                const QFileInfo fi(absPath);
-                const QString display = fi.fileName();
-                if (!lower.isEmpty()
-                    && !display.toLower().contains(lower)
-                    && !absPath.toLower().contains(lower))
-                    continue;
-                QJsonObject o;
-                o[QStringLiteral("label")] = display;
-                o[QStringLiteral("desc")] = absPath;
-                o[QStringLiteral("insertText")] = QStringLiteral("@file:%1").arg(absPath);
-                items.append(o);
-                if (++shown >= 20)
-                    break;
-            }
-        } else if (trigger == QLatin1String("#")) {
-            if (!m_workspaceFileFn) {
-                m_jsBridge->setMentionItems(trigger, items);
-                return;
-            }
-            const QStringList files = m_workspaceFileFn();
-            int shown = 0;
-            for (const QString &absPath : files) {
-                const QFileInfo fi(absPath);
-                const QString display = fi.fileName();
-                if (!lower.isEmpty()
-                    && !display.toLower().contains(lower)
-                    && !absPath.toLower().contains(lower))
-                    continue;
-                QJsonObject o;
-                o[QStringLiteral("label")] = display;
-                o[QStringLiteral("desc")] = absPath;
-                o[QStringLiteral("insertText")] = QStringLiteral("#%1").arg(absPath);
-                items.append(o);
-                if (++shown >= 20)
-                    break;
-            }
-
-            const auto vars = m_varResolver->matchingVars(filter);
-            for (const auto &v : vars) {
-                QJsonObject o;
-                o[QStringLiteral("label")] = QStringLiteral("#%1").arg(v.token);
-                o[QStringLiteral("desc")] = v.description;
-                o[QStringLiteral("insertText")] = QStringLiteral("#%1").arg(v.token);
-                items.append(o);
-                if (items.size() >= 20)
-                    break;
-            }
-        }
-
-        m_jsBridge->setMentionItems(trigger, items);
-    });
-
-    // Welcome / sign-in
-    connect(m_jsBridge, &exorcist::ChatJSBridge::suggestionClicked,
-            this, [this](const QString &msg) {
-        m_jsBridge->setInputText(msg);
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::signInRequested,
-            this, &ChatPanelWidget::dispatchProviderAuthAction);
-
-    connect(m_jsBridge, &exorcist::ChatJSBridge::openExternalUrlRequested,
-            this, [](const QString &url) {
-        QDesktopServices::openUrl(QUrl(url));
-    });
-
-    // Slash commands
-    {
-        QJsonArray cmds;
-        const QStringList names = {
-            QStringLiteral("/explain"), QStringLiteral("/fix"),
-            QStringLiteral("/tests"),   QStringLiteral("/review"),
-            QStringLiteral("/refactor"),QStringLiteral("/doc"),
-            QStringLiteral("/generate"),QStringLiteral("/edit"),
-            QStringLiteral("/search"),  QStringLiteral("/new"),
-            QStringLiteral("/compact"),
-        };
-        for (const auto &n : names) {
-            QJsonObject o;
-            o[QStringLiteral("name")] = n;
-            cmds.append(o);
-        }
-        m_jsBridge->setSlashCommands(cmds);
-    }
-
-#else
     // ── Qt-widget path ──────────────────────────────────────────────
 
     setStyleSheet(
@@ -557,8 +336,6 @@ void ChatPanelWidget::buildUi()
         if (auto *active = m_orchestrator->activeProvider())
             active->initialize();
     });
-#endif // EXORCIST_HAS_ULTRALIGHT
-
     connectTranscript();
 }
 
@@ -614,11 +391,7 @@ void ChatPanelWidget::connectController()
 
         m_sessionModel->appendPart(part);
         int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->addContentPart(idx, part.toJson());
-#else
         m_transcript->addContentPart(idx, part);
-#endif
     });
 
     connect(m_agentController, &AgentController::toolCallFinished,
@@ -650,11 +423,7 @@ void ChatPanelWidget::connectController()
                     p.toolPastTenseMsg = pres.pastTenseMessage;
                 }
                 int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-                m_jsBridge->updateToolState(idx, p.toolCallId, p.toJson());
-#else
                 m_transcript->updateToolState(idx, p.toolCallId, p);
-#endif
                 emit m_sessionModel->turnUpdated(idx);
                 break;
             }
@@ -697,131 +466,6 @@ void ChatPanelWidget::connectController()
 
 void ChatPanelWidget::connectTranscript()
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    connect(m_jsBridge, &exorcist::ChatJSBridge::followupClicked,
-            this, &ChatPanelWidget::onFollowupClicked);
-    connect(m_jsBridge, &exorcist::ChatJSBridge::feedbackGiven,
-            this, &ChatPanelWidget::onFeedback);
-    connect(m_jsBridge, &exorcist::ChatJSBridge::toolConfirmed,
-            this, &ChatPanelWidget::onToolConfirmed);
-    connect(m_jsBridge, &exorcist::ChatJSBridge::fileClicked,
-            this, &ChatPanelWidget::openFileRequested);
-    connect(m_jsBridge, &exorcist::ChatJSBridge::insertCodeRequested,
-            this, [this](const QString &code) {
-        if (m_insertAtCursorFn)
-            m_insertAtCursorFn(code);
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::copyCodeRequested,
-            this, [](const QString &code) {
-        QGuiApplication::clipboard()->setText(code);
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::copyTextRequested,
-            this, [](const QString &text) {
-        QGuiApplication::clipboard()->setText(text);
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::applyCodeRequested,
-            this, [this](const QString &code, const QString &, const QString &filePath) {
-        QString target = filePath.trimmed();
-        if (!target.isEmpty() && QFileInfo(target).isRelative() && !m_workspaceRoot.isEmpty())
-            target = QDir(m_workspaceRoot).filePath(target);
-        if (target.isEmpty())
-            target = m_activeFilePath;
-
-        if (!target.isEmpty()) {
-            QSaveFile f(target);
-            if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                f.write(code.toUtf8());
-                f.commit();
-                emit openFileRequested(target);
-                return;
-            }
-        }
-
-        if (m_insertAtCursorFn)
-            m_insertAtCursorFn(code);
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::runCodeRequested,
-            this, [this](const QString &code, const QString &) {
-        if (m_runInTerminalFn)
-            m_runInTerminalFn(code);
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::retryRequested,
-            this, [this](const QString &turnId) {
-        for (int i = 0; i < m_sessionModel->turnCount(); ++i) {
-            if (m_sessionModel->turn(i).id == turnId) {
-                const QString userMsg = m_sessionModel->turn(i).userMessage;
-                if (!userMsg.isEmpty())
-                    onSend(userMsg, m_currentMode);
-                break;
-            }
-        }
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::keepFileRequested,
-            this, [this](int, const QString &path) {
-        m_pendingPatches.erase(
-            std::remove_if(m_pendingPatches.begin(), m_pendingPatches.end(),
-                [&path](const PatchProposal &p) { return p.filePath == path; }),
-            m_pendingPatches.end());
-        if (m_pendingPatches.isEmpty()) hideChangesBar();
-        else showChangesBar(m_pendingPatches.size());
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::undoFileRequested,
-            this, [this](int, const QString &path) {
-        if (!m_agentController) return;
-        const auto *session = m_agentController->session();
-        if (!session) return;
-        const auto &snaps = session->fileSnapshots();
-        auto it = snaps.find(path);
-        if (it != snaps.end()) {
-            if (it.value().isNull()) {
-                QFile::remove(it.key());
-            } else {
-                QSaveFile f(it.key());
-                if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                    f.write(it.value().toUtf8());
-                    f.commit();
-                }
-            }
-        }
-        m_pendingPatches.erase(
-            std::remove_if(m_pendingPatches.begin(), m_pendingPatches.end(),
-                [&path](const PatchProposal &p) { return p.filePath == path; }),
-            m_pendingPatches.end());
-        if (m_pendingPatches.isEmpty()) hideChangesBar();
-        else showChangesBar(m_pendingPatches.size());
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::keepAllRequested,
-            this, [this]() {
-        m_pendingPatches.clear();
-        hideChangesBar();
-    });
-    connect(m_jsBridge, &exorcist::ChatJSBridge::undoAllRequested,
-            this, [this]() {
-        if (m_pendingPatches.isEmpty()) {
-            hideChangesBar();
-            return;
-        }
-        if (m_agentController) {
-            const auto *session = m_agentController->session();
-            if (session) {
-                const auto &snaps = session->fileSnapshots();
-                for (auto it = snaps.begin(); it != snaps.end(); ++it) {
-                    if (it.value().isNull()) {
-                        QFile::remove(it.key());
-                    } else {
-                        QSaveFile f(it.key());
-                        if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                            f.write(it.value().toUtf8());
-                            f.commit();
-                        }
-                    }
-                }
-            }
-        }
-        m_pendingPatches.clear();
-        hideChangesBar();
-    });
-#else
     connect(m_transcript, &ChatTranscriptView::followupClicked,
             this, &ChatPanelWidget::onFollowupClicked);
     connect(m_transcript, &ChatTranscriptView::feedbackGiven,
@@ -888,7 +532,6 @@ void ChatPanelWidget::connectTranscript()
             this, [this]() { m_keepBtn->click(); });
     connect(m_transcript, &ChatTranscriptView::undoAllRequested,
             this, [this]() { m_undoBtn->click(); });
-#endif
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -936,11 +579,7 @@ void ChatPanelWidget::setAgentController(AgentController *controller)
                     QJsonDocument(args).toJson(QJsonDocument::Compact));
                 m_sessionModel->appendPart(part);
                 int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-                m_jsBridge->addContentPart(idx, part.toJson());
-#else
                 m_transcript->addContentPart(idx, part);
-#endif
             }
 
             // Spin a nested event loop until onToolConfirmed() is called.
@@ -986,12 +625,6 @@ void ChatPanelWidget::setSessionStore(SessionStore *store)
                 for (const auto &msg : last.messages) {
                     if (msg.first == QLatin1String("user")) {
                         m_sessionModel->beginTurn(msg.second);
-#ifdef EXORCIST_HAS_ULTRALIGHT
-                        {
-                            int idx = m_sessionModel->turnCount() - 1;
-                            m_jsBridge->addTurn(idx, m_sessionModel->turn(idx).toJson());
-                        }
-#endif
                         m_conversationHistory.append({AgentMessage::Role::User, msg.second});
                     } else {
                         ChatContentPart part;
@@ -999,16 +632,10 @@ void ChatPanelWidget::setSessionStore(SessionStore *store)
                         part.markdownText = msg.second;
                         m_sessionModel->appendPart(part);
                         int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-                        m_jsBridge->addContentPart(idx, part.toJson());
-                        m_sessionModel->completeTurn();
-                        m_jsBridge->finishTurn(idx, static_cast<int>(ChatTurnModel::State::Complete));
-#else
                         m_transcript->addContentPart(idx, part);
                         m_sessionModel->completeTurn();
                         if (auto *w = m_transcript->turnWidget(idx))
                             w->finishTurn(ChatTurnModel::State::Complete);
-#endif
                         m_conversationHistory.append({AgentMessage::Role::Assistant, msg.second});
                     }
                 }
@@ -1029,30 +656,17 @@ void ChatPanelWidget::setEditorContext(const QString &filePath,
 
 void ChatPanelWidget::focusInput()
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_ultralightView->setFocus(Qt::OtherFocusReason);
-    m_jsBridge->focusInput();
-#else
     m_inputWidget->focusInput();
-#endif
 }
 
 void ChatPanelWidget::setInputText(const QString &text)
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setInputText(text);
-#else
     m_inputWidget->setInputText(text);
-#endif
 }
 
 void ChatPanelWidget::setInputEnabled(bool enabled)
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setInputEnabled(enabled);
-#else
     m_inputWidget->setEnabled(enabled);
-#endif
 }
 
 void ChatPanelWidget::attachSelection(const QString &text, const QString &filePath,
@@ -1068,7 +682,6 @@ void ChatPanelWidget::attachSelection(const QString &text, const QString &filePa
 void ChatPanelWidget::attachDiagnostics(const QList<AgentDiagnostic> &diagnostics)
 {
     m_pendingDiagnostics = diagnostics;
-#ifndef EXORCIST_HAS_ULTRALIGHT
     if (!diagnostics.isEmpty()) {
         QStringList lines;
         for (const auto &d : diagnostics) {
@@ -1079,7 +692,6 @@ void ChatPanelWidget::attachDiagnostics(const QList<AgentDiagnostic> &diagnostic
             lines.join(QLatin1Char('\n')),
             diagnostics.size());
     }
-#endif
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1133,66 +745,10 @@ void ChatPanelWidget::refreshModelList()
 {
     const auto *active = m_orchestrator->activeProvider();
     if (!active) {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->clearModels();
-        m_jsBridge->setThinkingVisible(false);
-#else
         m_inputWidget->clearModels();
-#endif
         return;
     }
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->clearModels();
-    const auto infoList = active->modelInfoList();
-    if (!infoList.isEmpty()) {
-        for (const auto &mi : infoList) {
-            bool premium = mi.billing.isPremium;
-            double mult  = mi.billing.multiplier;
-            if (mult <= 0.0 && m_modelRegistry) {
-                const ModelInfo reg = m_modelRegistry->model(mi.id);
-                if (!reg.id.isEmpty()) {
-                    premium = reg.billing.isPremium;
-                    mult    = reg.billing.multiplier;
-                }
-            }
-            QJsonObject obj;
-            obj[QStringLiteral("id")]       = mi.id;
-            obj[QStringLiteral("name")]     = mi.name;
-            obj[QStringLiteral("displayName")] = mi.name;
-            obj[QStringLiteral("premium")]  = premium;
-            obj[QStringLiteral("mult")]     = mult;
-            obj[QStringLiteral("thinking")] = mi.capabilities.thinking;
-            obj[QStringLiteral("vision")]   = mi.capabilities.vision;
-            obj[QStringLiteral("tools")]    = mi.capabilities.toolCalls;
-            m_jsBridge->addModel(obj);
-        }
-    } else {
-        const auto models = active->availableModels();
-        for (const auto &m : models) {
-            QJsonObject obj;
-            obj[QStringLiteral("id")]   = m;
-            obj[QStringLiteral("name")] = m;
-            obj[QStringLiteral("displayName")] = m;
-            if (m_modelRegistry) {
-                const ModelInfo info = m_modelRegistry->model(m);
-                if (!info.id.isEmpty()) {
-                    obj[QStringLiteral("name")]     = info.name;
-                    obj[QStringLiteral("displayName")] = info.name;
-                    obj[QStringLiteral("premium")]  = info.billing.isPremium;
-                    obj[QStringLiteral("mult")]     = info.billing.multiplier;
-                    obj[QStringLiteral("thinking")] = info.capabilities.thinking;
-                    obj[QStringLiteral("vision")]   = info.capabilities.vision;
-                    obj[QStringLiteral("tools")]    = info.capabilities.toolCalls;
-                }
-            }
-            m_jsBridge->addModel(obj);
-        }
-    }
-    m_jsBridge->setCurrentModel(active->currentModel());
-    m_jsBridge->setThinkingVisible(
-        modelSupportsThinking(active, m_modelRegistry, active->currentModel()));
-#else
     m_inputWidget->clearModels();
     const auto infoList = active->modelInfoList();
     if (!infoList.isEmpty()) {
@@ -1233,7 +789,6 @@ void ChatPanelWidget::refreshModelList()
         }
     }
     m_inputWidget->setCurrentModel(active->currentModel());
-#endif
 }
 
 void ChatPanelWidget::showWelcomeOrTranscript()
@@ -1246,9 +801,6 @@ void ChatPanelWidget::showWelcomeOrTranscript()
         else if (!active->isAvailable())
             state = QStringLiteral("auth");
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->showWelcome(state);
-#else
         if (state == QLatin1String("noProvider"))
             m_welcome->showState(ChatWelcomeWidget::State::NoProvider);
         else if (state == QLatin1String("auth")) {
@@ -1258,25 +810,16 @@ void ChatPanelWidget::showWelcomeOrTranscript()
         } else
             m_welcome->showState(ChatWelcomeWidget::State::Default);
         m_stack->setCurrentWidget(m_welcome);
-#endif
     } else {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->showTranscript();
-#else
         m_stack->setCurrentWidget(m_transcript);
-#endif
     }
     updateSessionTitle();
 }
 
 void ChatPanelWidget::setToolCount(int count)
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setToolCount(count);
-#else
     if (m_inputWidget)
         m_inputWidget->setToolCount(count);
-#endif
 }
 
 void ChatPanelWidget::updateSessionTitle()
@@ -1284,11 +827,7 @@ void ChatPanelWidget::updateSessionTitle()
     const QString title = m_sessionModel->isEmpty()
         ? tr("Exorcist AI")
         : (m_sessionModel->title().isEmpty() ? tr("Exorcist AI") : m_sessionModel->title());
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setSessionTitle(title);
-#else
     m_sessionTitleLabel->setText(title);
-#endif
 }
 
 void ChatPanelWidget::dispatchProviderAuthAction()
@@ -1342,28 +881,11 @@ void ChatPanelWidget::onSend(const QString &text, int mode)
         // Show error in transcript
         if (m_sessionModel->isEmpty()) {
             m_sessionModel->beginTurn(text);
-#ifdef EXORCIST_HAS_ULTRALIGHT
-            {
-                int idx = m_sessionModel->turnCount() - 1;
-                m_jsBridge->addTurn(idx, m_sessionModel->turn(idx).toJson());
-            }
-#endif
         }
         m_sessionModel->errorTurn(
             tr("No available provider. Select or configure a provider first."));
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        {
-            int idx = m_sessionModel->turnCount() - 1;
-            const auto &turn = m_sessionModel->turn(idx);
-            if (!turn.parts.isEmpty())
-                m_jsBridge->addContentPart(idx, turn.parts.last().toJson());
-            m_jsBridge->finishTurn(idx, static_cast<int>(ChatTurnModel::State::Error));
-        }
-#endif
         showWelcomeOrTranscript();
-#ifndef EXORCIST_HAS_ULTRALIGHT
         m_stack->setCurrentWidget(m_transcript);
-#endif
         return;
     }
 
@@ -1401,26 +923,6 @@ void ChatPanelWidget::startRequest(const QString &text, int mode,
     // Collect attachments from input widget before they are cleared
     QStringList attachmentNames;
     QList<Attachment> reqAttachments;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    for (const QString &path : m_pendingFileAttachments) {
-        const QFileInfo fi(path);
-        attachmentNames << fi.fileName();
-        Attachment att;
-        att.path = path;
-        att.type = Attachment::Type::File;
-        QMimeDatabase db;
-        const QString mime = db.mimeTypeForFile(path).name();
-        att.mimeType = mime;
-        if (mime.startsWith(QLatin1String("image/"))) {
-            att.type = Attachment::Type::Image;
-            QFile f(path);
-            if (f.open(QIODevice::ReadOnly))
-                att.data = f.readAll();
-        }
-        reqAttachments.append(att);
-    }
-    m_pendingFileAttachments.clear();
-#else
     const auto &inputAtts = m_inputWidget->attachments();
     for (const auto &a : inputAtts) {
         attachmentNames << a.name;
@@ -1434,7 +936,6 @@ void ChatPanelWidget::startRequest(const QString &text, int mode,
         }
         reqAttachments.append(att);
     }
-#endif
 
     m_sessionModel->beginTurn(text, attachmentNames, mode, modelId, providerId, slashCmd);
 
@@ -1481,27 +982,14 @@ void ChatPanelWidget::startRequest(const QString &text, int mode,
         updateSessionTitle();
     }
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    {
-        int idx = m_sessionModel->turnCount() - 1;
-        m_jsBridge->addTurn(idx, m_sessionModel->turn(idx).toJson());
-    }
-    m_jsBridge->showTranscript();
-    // Ultralight auto-scrolls via JS
-#else
     m_stack->setCurrentWidget(m_transcript);
     m_transcript->scrollToBottom();
-#endif
 
     m_pendingRequestId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     m_pendingIntent = AgentIntent::Chat;
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setStreamingState(true);
-#else
     m_inputWidget->setStreaming(true);
     m_transcript->setStreamingActive(true);
-#endif
 
     const bool agentMode = AgentModes::usesAgentLoop(mode);
 
@@ -1527,12 +1015,7 @@ void ChatPanelWidget::startRequest(const QString &text, int mode,
         }
 
         // Pass current reasoning effort from settings (only if thinking toggle is on)
-        const bool thinkOn =
-#ifdef EXORCIST_HAS_ULTRALIGHT
-            m_thinkingEnabled;
-#else
-            m_inputWidget->isThinkingEnabled();
-#endif
+        const bool thinkOn = m_inputWidget->isThinkingEnabled();
         if (thinkOn) {
             QSettings s;
             s.beginGroup(QStringLiteral("AI"));
@@ -1603,12 +1086,7 @@ void ChatPanelWidget::startRequest(const QString &text, int mode,
     req.attachments         = reqAttachments;
     // Read reasoning effort from settings, but only apply if thinking toggle is on
     {
-        const bool thinkOn2 =
-#ifdef EXORCIST_HAS_ULTRALIGHT
-            m_thinkingEnabled;
-#else
-            m_inputWidget->isThinkingEnabled();
-#endif
+        const bool thinkOn2 = m_inputWidget->isThinkingEnabled();
         if (thinkOn2) {
             QSettings s;
             s.beginGroup(QStringLiteral("AI"));
@@ -1644,22 +1122,14 @@ void ChatPanelWidget::onCancel()
     if (!m_sessionModel->isEmpty()) {
         m_sessionModel->cancelTurn();
         int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->finishTurn(idx, static_cast<int>(ChatTurnModel::State::Cancelled));
-#else
         if (auto *w = m_transcript->turnWidget(idx))
             w->finishTurn(ChatTurnModel::State::Cancelled);
-#endif
     }
 
     m_pendingRequestId.clear();
     m_pendingFileAttachments.clear();
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setStreamingState(false);
-#else
     m_inputWidget->setStreaming(false);
     m_transcript->setStreamingActive(false);
-#endif
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1714,19 +1184,11 @@ void ChatPanelWidget::onResponseFinished(const QString &requestId,
         const int idx = m_sessionModel->turnCount() - 1;
         if (idx >= 0) {
             if (!m_deltaBuffer.isEmpty()) {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-                m_jsBridge->appendMarkdownDelta(idx, m_deltaBuffer);
-#else
                 m_transcript->appendMarkdownDelta(idx, m_deltaBuffer);
-#endif
                 m_deltaBuffer.clear();
             }
             if (!m_thinkingDeltaBuffer.isEmpty()) {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-                m_jsBridge->appendThinkingDelta(idx, m_thinkingDeltaBuffer);
-#else
                 m_transcript->appendThinkingDelta(idx, m_thinkingDeltaBuffer);
-#endif
                 m_thinkingDeltaBuffer.clear();
             }
         }
@@ -1734,12 +1196,8 @@ void ChatPanelWidget::onResponseFinished(const QString &requestId,
 
     m_pendingRequestId.clear();
     m_pendingFileAttachments.clear();
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setStreamingState(false);
-#else
     m_inputWidget->setStreaming(false);
     m_transcript->setStreamingActive(false);
-#endif
 
     // Add assistant message to history
     m_conversationHistory.append({AgentMessage::Role::Assistant, response.text});
@@ -1786,11 +1244,7 @@ void ChatPanelWidget::onResponseFinished(const QString &requestId,
         auto part = ChatContentPart::workspaceEdit(files);
         m_sessionModel->appendPart(part);
         int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->addContentPart(idx, part.toJson());
-#else
         m_transcript->addContentPart(idx, part);
-#endif
     }
 
     // If the response includes followup suggestions, show them
@@ -1801,30 +1255,18 @@ void ChatPanelWidget::onResponseFinished(const QString &requestId,
         auto part = ChatContentPart::followup(items);
         m_sessionModel->appendPart(part);
         int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->addContentPart(idx, part.toJson());
-#else
         m_transcript->addContentPart(idx, part);
-#endif
     }
 
     // Complete the turn in the model
     m_sessionModel->completeTurn();
     int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->finishTurn(idx, static_cast<int>(ChatTurnModel::State::Complete));
-    if (response.totalTokens > 0)
-        m_jsBridge->setTokenUsage(idx, response.promptTokens,
-                                  response.completionTokens,
-                                  response.totalTokens);
-#else
     if (auto *w = m_transcript->turnWidget(idx)) {
         w->finishTurn(ChatTurnModel::State::Complete);
         if (response.totalTokens > 0)
             w->setTokenUsage(response.promptTokens, response.completionTokens,
                              response.totalTokens);
     }
-#endif
 
     // ── Review annotations ──────────────────────────────────────────────
     if (m_pendingIntent == AgentIntent::CodeReview && !m_activeFilePath.isEmpty()) {
@@ -1858,12 +1300,8 @@ void ChatPanelWidget::onResponseError(const QString &requestId,
 
     m_pendingRequestId.clear();
     m_pendingFileAttachments.clear();
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setStreamingState(false);
-#else
     m_inputWidget->setStreaming(false);
     m_transcript->setStreamingActive(false);
-#endif
 
     int idx = m_sessionModel->turnCount() - 1;
     if (idx < 0)
@@ -1895,14 +1333,10 @@ void ChatPanelWidget::onResponseError(const QString &requestId,
     }
 
     m_sessionModel->errorTurn(displayMsg);
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->finishTurn(idx, static_cast<int>(ChatTurnModel::State::Error));
-#else
     if (auto *w = m_transcript->turnWidget(idx)) {
         w->showError(displayMsg, error.code);
         w->finishTurn(ChatTurnModel::State::Error);
     }
-#endif
 
     // Persist full turn data to session store
     persistCompletedTurn(idx);
@@ -1919,11 +1353,7 @@ void ChatPanelWidget::onResponseError(const QString &requestId,
 
 void ChatPanelWidget::onFollowupClicked(const QString &message)
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setInputText(message);
-#else
     m_inputWidget->setInputText(message);
-#endif
     onSend(message, m_currentMode);
 }
 
@@ -1943,11 +1373,7 @@ void ChatPanelWidget::onToolConfirmed(const QString &callId, int approval)
                     ? ChatContentPart::ToolState::Streaming
                     : ChatContentPart::ToolState::CompleteError;
                 int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-                m_jsBridge->updateToolState(idx, callId, p.toJson());
-#else
                 m_transcript->updateToolState(idx, callId, p);
-#endif
                 emit m_sessionModel->turnUpdated(idx);
                 break;
             }
@@ -1996,14 +1422,9 @@ void ChatPanelWidget::onNewSession()
 
     hideChangesBar();
     showWelcomeOrTranscript();
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->setStreamingState(false);
-    m_jsBridge->clearInput();
-#else
     m_inputWidget->setStreaming(false);
     m_transcript->setStreamingActive(false);
     m_inputWidget->clear();
-#endif
     updateSessionTitle();
 }
 
@@ -2053,11 +1474,7 @@ void ChatPanelWidget::restoreSession(const QString &sessionId,
     if (effectiveMode >= 0 && effectiveMode <= 2) {
         m_currentMode = effectiveMode;
         m_sessionModel->setMode(effectiveMode);
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->setMode(effectiveMode);
-#else
         m_inputWidget->setCurrentMode(effectiveMode);
-#endif
     }
     if (!modelId.isEmpty())
         m_sessionModel->setSelectedModel(modelId);
@@ -2073,17 +1490,10 @@ void ChatPanelWidget::restoreSession(const QString &sessionId,
 
         // Add content parts to model and transcript
         int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->addTurn(idx, m_sessionModel->turn(idx).toJson());
-#endif
 
         for (const auto &part : turn.parts) {
             m_sessionModel->appendPart(part);
-#ifdef EXORCIST_HAS_ULTRALIGHT
-            m_jsBridge->addContentPart(idx, part.toJson());
-#else
             m_transcript->addContentPart(idx, part);
-#endif
         }
 
         // Complete the turn in the model (emits turnCompleted → finishTurn)
@@ -2097,12 +1507,8 @@ void ChatPanelWidget::restoreSession(const QString &sessionId,
         currentTurn.timestamp = turn.timestamp;
 
         // Apply the real restored state to the widget
-#ifdef EXORCIST_HAS_ULTRALIGHT
-        m_jsBridge->finishTurn(idx, static_cast<int>(turn.state));
-#else
         if (auto *w = m_transcript->turnWidget(idx))
             w->finishTurn(turn.state);
-#endif
 
         // Rebuild conversation history with tool calls for full context
         m_conversationHistory.append({AgentMessage::Role::User, turn.userMessage});
@@ -2173,12 +1579,6 @@ void ChatPanelWidget::onShowHistory()
                 for (const auto &msg : session.messages) {
                     if (msg.first == QLatin1String("user")) {
                         m_sessionModel->beginTurn(msg.second);
-#ifdef EXORCIST_HAS_ULTRALIGHT
-                        {
-                            int idx = m_sessionModel->turnCount() - 1;
-                            m_jsBridge->addTurn(idx, m_sessionModel->turn(idx).toJson());
-                        }
-#endif
                         m_conversationHistory.append({AgentMessage::Role::User, msg.second});
                     } else if (msg.first == QLatin1String("assistant")) {
                         if (m_sessionModel->isEmpty())
@@ -2186,14 +1586,9 @@ void ChatPanelWidget::onShowHistory()
                         m_sessionModel->appendMarkdownDelta(msg.second);
                         m_sessionModel->completeTurn();
                         int idx = m_sessionModel->turnCount() - 1;
-#ifdef EXORCIST_HAS_ULTRALIGHT
-                        m_jsBridge->appendMarkdownDelta(idx, msg.second);
-                        m_jsBridge->finishTurn(idx, static_cast<int>(ChatTurnModel::State::Complete));
-#else
                         m_transcript->appendMarkdownDelta(idx, msg.second);
                         if (auto *w = m_transcript->turnWidget(idx))
                             w->finishTurn(ChatTurnModel::State::Complete);
-#endif
                         m_conversationHistory.append({AgentMessage::Role::Assistant, msg.second});
                     } else if (msg.first == QLatin1String("tool")) {
                         // Tool call context — add to history so model has context
@@ -2211,11 +1606,7 @@ void ChatPanelWidget::onShowHistory()
                         session->setMessages(m_conversationHistory);
                 }
             }
-#ifdef EXORCIST_HAS_ULTRALIGHT
-            m_jsBridge->showTranscript();
-#else
             m_stack->setCurrentWidget(m_transcript);
-#endif
         });
         connect(m_historyPopup, &ChatSessionHistoryPopup::newSessionRequested,
                 this, &ChatPanelWidget::onNewSession);
@@ -2253,24 +1644,16 @@ void ChatPanelWidget::onShowHistory()
 
 void ChatPanelWidget::showChangesBar(int editCount)
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->showChangesBar(editCount);
-#else
     m_changesLabel->setText(
         tr("%1 file%2 changed")
             .arg(editCount)
             .arg(editCount == 1 ? "" : "s"));
     m_changesBar->show();
-#endif
 }
 
 void ChatPanelWidget::hideChangesBar()
 {
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    m_jsBridge->hideChangesBar();
-#else
     m_changesBar->hide();
-#endif
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

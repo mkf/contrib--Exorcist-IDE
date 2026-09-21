@@ -622,36 +622,25 @@ add_executable(exorcist WIN32
     settings/scopedsettings.cpp
 )
 
-# ── Chat renderer: Ultralight (HTML/JS) vs Qt widgets ────────────────────────
-if(EXORCIST_USE_ULTRALIGHT)
-    target_sources(exorcist PRIVATE
-        agent/chat/ultralight/ultralightengine.h
-        agent/chat/ultralight/ultralightengine.cpp
-        agent/chat/ultralight/ultralightwidget.h
-        agent/chat/ultralight/ultralightwidget.cpp
-        agent/chat/ultralight/chatjsbridge.h
-        agent/chat/ultralight/chatjsbridge.cpp
-    )
-else()
-    target_sources(exorcist PRIVATE
-        agent/chat/chatfollowupswidget.h
-        agent/chat/chatfollowupswidget.cpp
-        agent/chat/chatmarkdownwidget.h
-        agent/chat/chatmarkdownwidget.cpp
-        agent/chat/chatthinkingwidget.h
-        agent/chat/chatthinkingwidget.cpp
-        agent/chat/chattoolinvocationwidget.h
-        agent/chat/chattoolinvocationwidget.cpp
-        agent/chat/chattranscriptview.h
-        agent/chat/chattranscriptview.cpp
-        agent/chat/chatturnwidget.h
-        agent/chat/chatturnwidget.cpp
-        agent/chat/chatwelcomewidget.h
-        agent/chat/chatwelcomewidget.cpp
-        agent/chat/chatworkspaceeditwidget.h
-        agent/chat/chatworkspaceeditwidget.cpp
-    )
-endif()
+# ── Chat renderer: Qt widgets ────────────────────────────────────────────────
+target_sources(exorcist PRIVATE
+    agent/chat/chatfollowupswidget.h
+    agent/chat/chatfollowupswidget.cpp
+    agent/chat/chatmarkdownwidget.h
+    agent/chat/chatmarkdownwidget.cpp
+    agent/chat/chatthinkingwidget.h
+    agent/chat/chatthinkingwidget.cpp
+    agent/chat/chattoolinvocationwidget.h
+    agent/chat/chattoolinvocationwidget.cpp
+    agent/chat/chattranscriptview.h
+    agent/chat/chattranscriptview.cpp
+    agent/chat/chatturnwidget.h
+    agent/chat/chatturnwidget.cpp
+    agent/chat/chatwelcomewidget.h
+    agent/chat/chatwelcomewidget.cpp
+    agent/chat/chatworkspaceeditwidget.h
+    agent/chat/chatworkspaceeditwidget.cpp
+)
 
 # Container-only Qt modules. Qt-specific feature modules (UiTools, Quick,
 # Qml, QuickWidgets, Help) live in plugins/qt-tools/ — see manifesto rules.
@@ -682,12 +671,6 @@ if(EXORCIST_USE_TREESITTER)
         ts-grammar-rust ts-grammar-json
         ts-grammar-go ts-grammar-yaml ts-grammar-toml
     )
-endif()
-
-if(EXORCIST_USE_ULTRALIGHT)
-    target_compile_definitions(exorcist PRIVATE EXORCIST_HAS_ULTRALIGHT)
-    target_link_libraries(exorcist PRIVATE ultralight-sdk)
-    ultralight_deploy_runtime(exorcist)
 endif()
 
 if(EXORCIST_USE_LLVM)

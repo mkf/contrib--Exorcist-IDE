@@ -122,7 +122,6 @@ Priority rule: **typing never blocks** — all background work must be async/can
 - SecureKeyStorage (DPAPI/Keychain/libsecret)
 - Network monitor with offline/rate-limit toasts
 - Async context gathering (workspace indexer, git status, diagnostics)
-- Ultralight HTML chat renderer (optional `EXORCIST_USE_ULTRALIGHT` — lightweight WebKit fork, ~10 MB, replaces Qt widget transcript with HTML/CSS/JS rendering via BitmapSurface→QImage)
 
 ---
 
@@ -463,14 +462,14 @@ See [docs/luajit.md](luajit.md)
 - [x] **AgentUIEvent** (`src/agent/ui/agentuievent.h`) — 13 event types (MissionCreated/Updated/Completed, StepAdded/Updated, MetricUpdated, LogAdded, PanelCreated/Updated/Removed, ArtifactAdded, CustomEvent), status enums (AgentLogLevel, AgentStepStatus, AgentMissionStatus), 12 static convenience constructors
 - [x] **IAgentUIRenderer** (`src/agent/ui/iagentuirenderer.h`) — abstract interface for dashboard renderers (handleEvent, clearDashboard, isActive)
 - [x] **AgentUIBus** (`src/agent/ui/agentuibus.h/.cpp`) — QObject event bus: renderer registration, event posting with timestamps, mission lifecycle tracking, per-mission event history
-- [x] **AgentDashboardPanel** (`src/agent/ui/agentdashboardpanel.h/.cpp`) — live operational dashboard: Ultralight HTML renderer path (dark-themed dashboard with steps, metrics, logs, artifacts) with QWidget fallback
+- [x] **AgentDashboardPanel** (`src/agent/ui/agentdashboardpanel.h/.cpp`) — live operational dashboard: QWidget renderer with steps, metrics, logs, and artifacts
 - [x] **DashboardJSBridge** (`src/agent/ui/dashboardjsbridge.h/.cpp`) — C++↔JS bridge for pushing structured events to dashboard HTML
 - [x] **Dashboard tools** (`src/agent/tools/dashboardtools.h`) — 6 ITool implementations: create_dashboard_mission, update_dashboard_step, update_dashboard_metric, add_dashboard_log, add_dashboard_artifact, complete_dashboard_mission
 - [x] **Integration** — AgentUIBus owned by AgentPlatformBootstrap, registered as "agentUIBus" service; dashboard dock in MainWindow (FREEZE-compliant via ServiceRegistry, no new members); 85+ agent tools registered
 - [x] **test_agentuibus** — 13 tests: event creation, bus dispatch, multiple renderers, mission lifecycle, event history, clear, timestamps, all convenience constructors, signal emission. 43/43 total suite pass.
 
 ### Chat & Streaming UX Polish
-- [x] Fix text selection/copy in Ultralight chat panel (mouse drag button state, Ctrl+C interception, copy event bridge, context menu with Copy/Select All)
+- [x] Fix text selection/copy in the chat panel (mouse drag button state, Ctrl+C interception, copy event bridge, context menu with Copy/Select All)
 - [x] HTTP/2 GOAWAY crash fix — disabled HTTP/2 across all QNetworkAccessManagers (8 src/ + 9 plugin locations) + QPointer safety in Copilot provider
 - [x] test_http2hardening — 12 tests: attribute verification for all request patterns, default check, persistence after header additions. 44/44 total suite pass.
 - [x] VS Code-style tool invocation cards — card-based rendering with category SVG icons (file/terminal/search/directory/subagent/gear), streaming shimmer + pulse-dot animation, collapsible input/output detail, border glow on active tools

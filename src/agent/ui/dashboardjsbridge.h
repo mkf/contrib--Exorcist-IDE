@@ -4,29 +4,19 @@
 #include <QJsonObject>
 #include <QVector>
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-namespace exorcist { class UltralightWidget; }
-#endif
-
 // ── DashboardJSBridge — C++ ↔ JS bridge for agent dashboard ─────────────────
 //
-// Mirrors ChatJSBridge pattern. Pushes structured AgentUIEvents to the
-// dashboard's JavaScript as JSON strings. Receives user actions (artifact
-// clicks) back from JS.
+// Pushes structured AgentUIEvents to the dashboard's JavaScript as JSON
+// strings. Receives user actions (artifact clicks) back from JS.
 //
-// Events pushed before the JS bridge is ready are queued and flushed
-// automatically once the view reports DOM readiness.
+// In the Qt-widget dashboard there is no JS renderer, so the push methods
+// are no-ops.
 
 class DashboardJSBridge : public QObject
 {
     Q_OBJECT
 public:
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    explicit DashboardJSBridge(exorcist::UltralightWidget *view,
-                                QObject *parent = nullptr);
-#else
     explicit DashboardJSBridge(QObject *parent = nullptr);
-#endif
 
     // ── C++ → JS ─────────────────────────────────────────────────────────
 
@@ -48,8 +38,4 @@ signals:
 
 private:
     void eval(const QString &js);
-
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    exorcist::UltralightWidget *m_view = nullptr;
-#endif
 };

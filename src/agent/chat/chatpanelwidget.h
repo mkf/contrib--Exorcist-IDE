@@ -29,12 +29,8 @@ class SessionStore;
 class ChatInputWidget;
 class ChatSessionHistoryPopup;
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-namespace exorcist { class UltralightWidget; class ChatJSBridge; }
-#else
 class ChatTranscriptView;
 class ChatWelcomeWidget;
-#endif
 
 // ── ChatPanelWidget ──────────────────────────────────────────────────────────
 //
@@ -162,15 +158,9 @@ private:
     QToolButton           *m_gearHeaderBtn    = nullptr;
     QComboBox             *m_providerCombo    = nullptr; // Qt path only
 
-#ifdef EXORCIST_HAS_ULTRALIGHT
-    exorcist::UltralightWidget *m_ultralightView = nullptr;
-    exorcist::ChatJSBridge     *m_jsBridge       = nullptr;
-    bool                        m_thinkingEnabled = false;
-#else
     QStackedWidget        *m_stack            = nullptr;
     ChatWelcomeWidget     *m_welcome          = nullptr;
     ChatTranscriptView    *m_transcript       = nullptr;
-#endif
     QStringList           m_pendingFileAttachments;
     ChatInputWidget       *m_inputWidget      = nullptr;
 

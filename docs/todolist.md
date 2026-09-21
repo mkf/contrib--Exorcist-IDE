@@ -326,7 +326,7 @@
 
 ### Chat & Streaming UX
 
-- [x] **Text selection/copy** — Ultralight chat panel-ში ტექსტის მონიშვნა და კოპირება: added `::selection` CSS rule so highlights are visible; Ctrl+C and drag-to-select already wired through UltralightWidget + ChatJSBridge
+- [x] **Text selection/copy** — chat panel-ში ტექსტის მონიშვნა და კოპირება: Ctrl+C and drag-to-select wired through the Qt widget transcript
 - [x] **Stream consolidation** — tool call-ები compact unified stream-ად (VS Code parity): wk-box groups tool calls per cycle, auto-collapses on finish; added streaming-step shimmer + spinning icon CSS; fixed wk-box reuse across reasoning cycles
 - [x] **Terminal tool hang fix** — replaced blocking `waitForFinished()` with `QEventLoop`, added `cancelForeground()` + `RunCommandTool::cancel()`
 

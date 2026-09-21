@@ -7,8 +7,8 @@
 // Any panel that wants to display structured agent UI events implements this.
 // The AgentUIBus dispatches events to all registered renderers.
 //
-// The primary implementation is AgentDashboardPanel (Ultralight-based),
-// but the interface allows QWidget-based fallbacks or headless renderers
+// The primary implementation is AgentDashboardPanel (QWidget-based),
+// but the interface allows other renderers or headless implementations
 // (e.g., for logging/testing).
 
 class IAgentUIRenderer

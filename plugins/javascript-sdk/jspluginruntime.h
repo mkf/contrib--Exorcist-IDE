@@ -6,8 +6,8 @@
 // Each JS plugin directory (plugin.json + main.js) gets its own JSC
 // JSGlobalContext with the `ex.*` host API bridged to IHostServices.
 //
-// Uses the JavaScriptCore C API shipped with the Ultralight SDK — no
-// separate WebView or DOM needed. Pure JavaScript execution only.
+// Uses the system JavaScriptCore C API — no separate WebView or DOM
+// needed. Pure JavaScript execution only.
 
 #include <QObject>
 #include <QFileSystemWatcher>

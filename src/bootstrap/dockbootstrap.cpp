@@ -87,7 +87,7 @@ void DockBootstrap::initialize(const Deps &deps)
     ServiceRegistry     *svc     = deps.services;
     exdock::DockManager *mgr     = deps.dockManager;
 
-    // ── Chat panel (EAGER — needs native HWND parent, see UltralightWidget) ──
+    // ── Chat panel (EAGER — needs a native HWND parent) ──
     m_chatPanel = new ChatPanelWidget(deps.orchestrator, parent);
     if (svc)
         svc->registerService(QStringLiteral("chatPanel"), m_chatPanel);

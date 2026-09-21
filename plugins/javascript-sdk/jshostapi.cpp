@@ -255,8 +255,8 @@ JSValueRef JsHostAPI::js_command_register(JSContextRef ctx, JSObjectRef /*functi
 
     // Store callback in __exo_cmds[id] so we can invoke it via
     // JSEvaluateScript (which properly sets up the VM entry scope).
-    // Direct JSObjectCallAsFunction from external C++ crashes in
-    // Ultralight's JSC build because no VM entry scope exists.
+    // Direct JSObjectCallAsFunction from external C++ can crash because
+    // no VM entry scope exists.
     JSObjectRef global = JSContextGetGlobalObject(ctx);
 
     // Ensure __exo_cmds registry object exists

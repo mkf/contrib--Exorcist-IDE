@@ -1,5 +1,5 @@
 # Headless JS plugin runtime — needs only the JavaScriptCore C API, provided
-# by the `javascriptcore` interface target (Ultralight SDK or system JSC).
+# by the `javascriptcore` interface target (system JSC).
 set(_jssdk_sources
     jspluginsdkplugin.h
     jspluginsdkplugin.cpp
@@ -10,14 +10,6 @@ set(_jssdk_sources
     ${CMAKE_SOURCE_DIR}/src/plugininterface.h
 )
 
-# The HTML/WebView plugin view is Ultralight-only.
-if(EXORCIST_USE_ULTRALIGHT)
-    list(APPEND _jssdk_sources
-        ultralightpluginview.h
-        ultralightpluginview.cpp
-    )
-endif()
-
 add_library(javascript_sdk_plugin SHARED ${_jssdk_sources})
 
 target_link_libraries(javascript_sdk_plugin PRIVATE
@@ -25,11 +17,6 @@ target_link_libraries(javascript_sdk_plugin PRIVATE
     Qt6::Network
     javascriptcore
 )
-
-if(EXORCIST_USE_ULTRALIGHT)
-    target_link_libraries(javascript_sdk_plugin PRIVATE ultralight-sdk)
-    target_compile_definitions(javascript_sdk_plugin PRIVATE EXORCIST_HAS_ULTRALIGHT)
-endif()
 
 target_include_directories(javascript_sdk_plugin PRIVATE
     ${CMAKE_SOURCE_DIR}/src

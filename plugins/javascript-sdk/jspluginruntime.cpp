@@ -277,7 +277,7 @@ bool JsPluginRuntime::callGlobalFunction(JSGlobalContextRef ctx,
         return true;
 
     // Use JSEvaluateScript to call the function — this properly sets up
-    // the VM entry scope that Ultralight's JSC build requires.
+    // the VM entry scope that the JSC build requires.
     const QByteArray script = QStringLiteral("if (typeof %1 === 'function') %1();")
                                   .arg(QString::fromUtf8(name)).toUtf8();
     JSStringRef jsScript = JSStringCreateWithUTF8CString(script.constData());

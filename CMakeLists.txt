@@ -17,7 +17,6 @@ find_package(Qt6 QUIET COMPONENTS SerialPort)
 option(EXORCIST_USE_LLVM "Enable LLVM integration stubs" OFF)
 option(EXORCIST_DEPLOY_QT "Run windeployqt after build on Windows" ON)
 option(EXORCIST_USE_TREESITTER "Enable tree-sitter syntax highlighting" ON)
-option(EXORCIST_USE_ULTRALIGHT "Enable Ultralight HTML chat renderer" ON)
 if(EXORCIST_USE_LLVM)
     find_package(LLVM CONFIG REQUIRED)
 endif()
@@ -170,35 +169,22 @@ if(EXORCIST_USE_TREESITTER)
 endif()
 
 add_subdirectory(cmake/luajit)
-if(EXORCIST_USE_ULTRALIGHT)
-    add_subdirectory(cmake/ultralight)
-endif()
 
 # ── JavaScriptCore provider ──────────────────────────────────────────────────
 # The headless JS plugin runtime (jspluginruntime/jshostapi) only needs the
-# JavaScriptCore C API. When Ultralight is enabled it comes from the bundled
-# SDK; otherwise fall back to a system JavaScriptCore (WebKitGTK) if present.
-# This keeps the Ultralight path untouched while letting the headless runtime
-# and its tests build without Ultralight.
-if(EXORCIST_USE_ULTRALIGHT)
+# JavaScriptCore C API, provided by the system JavaScriptCore (WebKitGTK).
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(JSC QUIET IMPORTED_TARGET javascriptcoregtk-4.1)
+endif()
+if(JSC_FOUND)
     add_library(javascriptcore INTERFACE)
-    target_link_libraries(javascriptcore INTERFACE ultralight-sdk)
+    target_link_libraries(javascriptcore INTERFACE PkgConfig::JSC)
     set(EXORCIST_HAS_JAVASCRIPTCORE ON)
-    message(STATUS "JavaScriptCore provider: Ultralight SDK")
+    message(STATUS "JavaScriptCore provider: system (javascriptcoregtk-4.1)")
 else()
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(JSC QUIET IMPORTED_TARGET javascriptcoregtk-4.1)
-    endif()
-    if(JSC_FOUND)
-        add_library(javascriptcore INTERFACE)
-        target_link_libraries(javascriptcore INTERFACE PkgConfig::JSC)
-        set(EXORCIST_HAS_JAVASCRIPTCORE ON)
-        message(STATUS "JavaScriptCore provider: system (javascriptcoregtk-4.1)")
-    else()
-        set(EXORCIST_HAS_JAVASCRIPTCORE OFF)
-        message(STATUS "JavaScriptCore provider: none (headless JS plugin runtime disabled)")
-    endif()
+    set(EXORCIST_HAS_JAVASCRIPTCORE OFF)
+    message(STATUS "JavaScriptCore provider: none (headless JS plugin runtime disabled)")
 endif()
 
 add_subdirectory(src)

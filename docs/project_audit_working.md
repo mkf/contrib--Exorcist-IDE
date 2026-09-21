@@ -164,13 +164,13 @@ Findings
 - Dashboard fallback cannot update steps correctly because StepAdded stores
   label only, while StepUpdated searches by stepId.
   Evidence: `src/agent/ui/agentdashboardpanel.cpp:127`
-  Impact: inconsistent UI state in non-Ultralight fallback mode.
+  Impact: inconsistent UI state in the dashboard fallback mode.
 - Dashboard events are sent without readiness/ack; JS bridge has no queue.
   Evidence: `src/agent/ui/agentdashboardpanel.cpp:33`,
   `src/agent/ui/dashboardjsbridge.cpp:33`
   Impact: early events can be dropped or lost during view initialization.
-  **Status: RESOLVED** — Ultralight path already queues scripts via
-  evaluateScript(). Fallback path now has null guard for m_stepsList/m_logsList.
+  **Status: RESOLVED** — Fallback path now has null guard for
+  m_stepsList/m_logsList.
 - Dashboard mission lifecycle is independent of chat session lifecycle;
   no shared ID or persistence across session restore.
   Evidence: `src/agent/ui/agentuibus.cpp:20`,
@@ -188,8 +188,7 @@ Tasks
 - Add JS bridge readiness gating or event queue on startup.
   Evidence: `src/agent/ui/agentdashboardpanel.cpp:33`,
   `src/agent/ui/dashboardjsbridge.cpp:33`
-  **Status: DONE** — Ultralight evaluateScript() already queues.
-  Fallback path now has null guard.
+  **Status: DONE** — Fallback path now has null guard.
 - Tie dashboard mission lifecycle to chat session (shared missionId,
   persistence on restore).
   Evidence: `src/agent/tools/dashboardtools.h:24`

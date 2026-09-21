@@ -21,7 +21,7 @@ void AgentUIBus::removeRenderer(IAgentUIRenderer *renderer)
 
 void AgentUIBus::post(const AgentUIEvent &event)
 {
-    // Renderers (Ultralight WebView) are not thread-safe.
+    // Renderers are not thread-safe.
     // If called from a worker thread (e.g. QtConcurrent tool execution),
     // marshal back to the main thread.
     if (QThread::currentThread() != thread()) {

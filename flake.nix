@@ -25,7 +25,7 @@
           qt.qttools
           qt.qtserialport
           # System JavaScriptCore provider for the headless JS plugin runtime
-          # when Ultralight is disabled (pkg-config: javascriptcoregtk-4.1).
+          # (pkg-config: javascriptcoregtk-4.1).
           webkitgtk_4_1
           libGL
           libglvnd
