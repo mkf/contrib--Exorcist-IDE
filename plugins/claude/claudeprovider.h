@@ -51,6 +51,8 @@ public:
     void initialize() override;
     void shutdown()   override;
 
+    ProviderAuthInfo authInfo() const override;
+
     void sendRequest(const AgentRequest &request)  override;
     void cancelRequest(const QString &requestId)   override;
 

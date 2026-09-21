@@ -1,13 +1,24 @@
 #include "byokprovider.h"
 
+#include "agent/pkce.h"
+
+#include <QDesktopServices>
+#include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLoggingCategory>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPointer>
+#include <QRandomGenerator>
 #include <QSettings>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTimer>
+#include <QUrlQuery>
+
+Q_LOGGING_CATEGORY(lcByok, "exorcist.byok")
 
 using OpenAICompat::Preset;
 
@@ -20,6 +31,19 @@ ByokProvider::ByokProvider(QString presetKey, QObject *parent)
     m_endpoint = OpenAICompat::loadEndpoint(s, m_presetKey);
     m_apiKey   = OpenAICompat::loadApiKey(s, m_presetKey);
     m_model    = OpenAICompat::loadModel(s, m_presetKey);
+
+    // OpenRouter OAuth: one server + one timeout connection for the lifetime
+    // of the provider (avoids duplicate connections across repeated attempts).
+    m_oauthServer = new QTcpServer(this);
+    connect(m_oauthServer, &QTcpServer::newConnection,
+            this, &ByokProvider::handleOpenRouterCallback);
+
+    m_oauthTimeout.setSingleShot(true);
+    m_oauthTimeout.setInterval(5 * 60 * 1000);
+    connect(&m_oauthTimeout, &QTimer::timeout, this, [this] {
+        qCInfo(lcByok) << "OpenRouter OAuth: timed out";
+        finishOpenRouterOAuth(false);
+    });
 }
 
 QString ByokProvider::id() const
@@ -145,6 +169,150 @@ void ByokProvider::shutdown()
 {
     cancelRequest(m_activeRequestId);
     m_available = false;
+}
+
+ProviderAuthInfo ByokProvider::authInfo() const
+{
+    ProviderAuthInfo info;
+    if (m_presetKey == QLatin1String("openrouter")) {
+        info.kind        = AuthAction::OAuth;
+        info.actionLabel = tr("Sign in with OpenRouter");
+    } else if (m_presetKey == QLatin1String("openai")) {
+        info.kind        = AuthAction::OpenUrl;
+        info.actionLabel = tr("Get an OpenAI API Key");
+        info.actionUrl   = QStringLiteral("https://platform.openai.com/api-keys");
+    } else if (m_presetKey == QLatin1String("zai")) {
+        info.kind        = AuthAction::OpenUrl;
+        info.actionLabel = tr("Get a Z.ai API Key");
+        info.actionUrl   = QStringLiteral("https://z.ai/manage-apikey/apikey-list");
+    } else {
+        // Custom: no public key page — send the user to settings.
+        info.kind        = AuthAction::OpenSettings;
+        info.actionLabel = tr("Open Settings to Paste API Key");
+    }
+    return info;
+}
+
+void ByokProvider::startAuth()
+{
+    if (m_presetKey == QLatin1String("openrouter"))
+        beginOpenRouterOAuth();
+}
+
+// ── OpenRouter OAuth PKCE ─────────────────────────────────────────────────────
+
+void ByokProvider::beginOpenRouterOAuth()
+{
+    if (m_oauthServer->isListening())
+        return; // already in progress
+
+    // PKCE verifier: 32 random bytes → 43-char base64url string.
+    QByteArray raw(32, Qt::Uninitialized);
+    for (int i = 0; i < raw.size(); ++i)
+        raw[i] = static_cast<char>(QRandomGenerator::global()->bounded(256));
+    m_oauthVerifier = QString::fromLatin1(raw.toBase64(
+        QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+
+    if (!m_oauthServer->listen(QHostAddress::LocalHost, 0)) {
+        qCWarning(lcByok) << "OpenRouter OAuth: cannot listen on localhost:"
+                          << m_oauthServer->errorString();
+        finishOpenRouterOAuth(false);
+        return;
+    }
+
+    const QString callback = Pkce::openRouterCallbackUrl(m_oauthServer->serverPort());
+    const QUrl authUrl = Pkce::openRouterAuthUrl(callback, Pkce::challenge(m_oauthVerifier));
+
+    m_oauthTimeout.start();
+    qCInfo(lcByok) << "OpenRouter OAuth: opening browser";
+    QDesktopServices::openUrl(authUrl);
+}
+
+void ByokProvider::handleOpenRouterCallback()
+{
+    QTcpSocket *socket = m_oauthServer->nextPendingConnection();
+    if (!socket)
+        return;
+
+    connect(socket, &QTcpSocket::readyRead, this, [this, socket] {
+        const QByteArray request = socket->readAll();
+        const QList<QByteArray> parts = request.split('\n').value(0).trimmed().split(' ');
+
+        QString code;
+        if (parts.size() >= 2) {
+            const QUrl url(QStringLiteral("http://localhost")
+                           + QString::fromUtf8(parts.at(1)));
+            code = QUrlQuery(url).queryItemValue(QStringLiteral("code"));
+        }
+
+        const QByteArray body = code.isEmpty()
+            ? QByteArrayLiteral("<html><body><h3>Sign-in failed.</h3>"
+                                "You can close this window.</body></html>")
+            : QByteArrayLiteral("<html><body><h3>Signed in to OpenRouter.</h3>"
+                                "You can close this window.</body></html>");
+        socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n"
+                      "Connection: close\r\n\r\n" + body);
+        socket->disconnectFromHost();
+        socket->deleteLater();
+
+        if (code.isEmpty()) {
+            qCWarning(lcByok) << "OpenRouter OAuth: callback had no code";
+            finishOpenRouterOAuth(false);
+            return;
+        }
+        exchangeOpenRouterCode(code);
+    });
+}
+
+void ByokProvider::exchangeOpenRouterCode(const QString &code)
+{
+    QNetworkRequest req{QUrl(QStringLiteral("https://openrouter.ai/api/v1/auth/keys"))};
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+
+    QJsonObject body;
+    body[QStringLiteral("code")] = code;
+    body[QStringLiteral("code_verifier")] = m_oauthVerifier;
+    body[QStringLiteral("code_challenge_method")] = QStringLiteral("S256");
+
+    QNetworkReply *reply = m_nam.post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            qCWarning(lcByok) << "OpenRouter OAuth: exchange failed:"
+                              << reply->errorString();
+            finishOpenRouterOAuth(false);
+            return;
+        }
+
+        const QJsonObject obj = QJsonDocument::fromJson(reply->readAll()).object();
+        const QString key = obj[QStringLiteral("key")].toString();
+        if (key.isEmpty()) {
+            qCWarning(lcByok) << "OpenRouter OAuth: response had no key";
+            finishOpenRouterOAuth(false);
+            return;
+        }
+
+        m_apiKey = key;
+        QSettings s;
+        OpenAICompat::saveApiKey(s, m_presetKey, key);
+        qCInfo(lcByok) << "OpenRouter OAuth: key stored";
+        finishOpenRouterOAuth(true);
+    });
+}
+
+void ByokProvider::finishOpenRouterOAuth(bool ok)
+{
+    m_oauthTimeout.stop();
+    if (m_oauthServer->isListening())
+        m_oauthServer->close();
+    m_oauthVerifier.clear();
+
+    if (ok) {
+        reloadConfig();
+        if (m_available)
+            fetchModels();
+    }
 }
 
 QString ByokProvider::modelsUrl() const

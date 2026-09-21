@@ -383,6 +383,19 @@ void ClaudeProvider::shutdown()
     m_available = false;
 }
 
+ProviderAuthInfo ClaudeProvider::authInfo() const
+{
+    // Anthropic does not offer OAuth to third-party tools, so the action
+    // points the user at the Console key page; the secondary link opens the
+    // provider's own key-entry command.
+    ProviderAuthInfo info;
+    info.kind              = AuthAction::OpenUrl;
+    info.actionLabel       = tr("Get an Anthropic API Key");
+    info.actionUrl         = QStringLiteral("https://console.anthropic.com/settings/keys");
+    info.settingsCommandId = QStringLiteral("claude.editApiKey");
+    return info;
+}
+
 void ClaudeProvider::setKeyStorageCallbacks(KeyStoreFn store, KeyRetrieveFn retrieve, KeyDeleteFn remove)
 {
     m_keyStore    = std::move(store);

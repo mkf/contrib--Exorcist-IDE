@@ -211,6 +211,27 @@ struct AgentError
     QString message;
 };
 
+// ── Provider authentication ───────────────────────────────────────────────────
+
+// How the user authenticates a provider. The chat surface renders the
+// provider-supplied label and dispatches on the kind; it never hardcodes a
+// provider's auth mechanism.
+enum class AuthAction
+{
+    None,          // provider needs no interactive authentication
+    OAuth,         // startAuth() runs the provider's OAuth flow
+    OpenUrl,       // open actionUrl in the browser
+    OpenSettings,  // open the settings surface
+};
+
+struct ProviderAuthInfo
+{
+    AuthAction kind = AuthAction::None;
+    QString    actionLabel;       // primary button text
+    QString    actionUrl;         // for OpenUrl
+    QString    settingsCommandId; // optional provider settings command
+};
+
 // ── IAgentProvider ────────────────────────────────────────────────────────────
 //
 // Base class for all AI providers. Concrete implementations live in plugins.
@@ -241,6 +262,12 @@ public:
 
     virtual void initialize() = 0;
     virtual void shutdown()   = 0;
+
+    // Authentication affordance. Providers that need credentials override
+    // authInfo(); OAuth providers also override startAuth(). initialize()
+    // must never start an interactive flow.
+    virtual ProviderAuthInfo authInfo() const { return {}; }
+    virtual void startAuth() {}
 
     // Asynchronous request — results arrive via signals.
     // requestId is provided by the caller (use QUuid::createUuid().toString()).

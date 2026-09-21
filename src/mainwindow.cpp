@@ -497,8 +497,7 @@ MainWindow::MainWindow(QWidget *parent)
         });
 
         // Wire gear icon → settings dialog
-        connect(m_chatPanel, &ChatPanelWidget::settingsRequested,
-                this, [this]() {
+        auto openAiSettings = [this]() {
             if (!m_settingsDialog) {
                 m_settingsDialog = new QDialog(this);
                 m_settingsDialog->setWindowTitle(tr("AI Settings"));
@@ -512,6 +511,21 @@ MainWindow::MainWindow(QWidget *parent)
             m_settingsDialog->show();
             m_settingsDialog->raise();
             m_settingsDialog->activateWindow();
+        };
+        connect(m_chatPanel, &ChatPanelWidget::settingsRequested,
+                this, openAiSettings);
+
+        // Secondary auth link → provider key-entry surface. Prefer the
+        // provider's own settings command; fall back to the AI settings dialog.
+        connect(m_chatPanel, &ChatPanelWidget::providerSettingsRequested,
+                this, [this, openAiSettings](const QString &commandId) {
+            if (!commandId.isEmpty() && m_hostServices
+                && m_hostServices->commandService()
+                && m_hostServices->commandService()->hasCommand(commandId)) {
+                m_hostServices->commandService()->executeCommand(commandId);
+                return;
+            }
+            openAiSettings();
         });
 
         // Auto-restore last session on startup

@@ -34,9 +34,14 @@ public:
 
     void showState(State state);
 
+    /// Auth-required state with a provider-supplied primary action label.
+    /// An empty label shows only the secondary settings link.
+    void showAuthRequired(const QString &actionLabel);
+
 signals:
     void suggestionClicked(const QString &message);
-    void signInRequested();
+    void authActionRequested();
+    void settingsRequested();
     void retryRequested();
 
 private:
@@ -44,7 +49,8 @@ private:
     void buildDefaultWelcome(bool disabled = false);
     void buildBannerState(const QString &icon, const QString &title,
                           const QString &message, const char *accentColor,
-                          State state = State::Default);
+                          State state = State::Default,
+                          const QString &actionLabel = QString());
 
     QVBoxLayout *m_layout = nullptr;
 };

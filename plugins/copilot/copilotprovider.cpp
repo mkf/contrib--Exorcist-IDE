@@ -206,8 +206,11 @@ void CopilotProvider::initialize()
     }
 
     if (m_githubToken.isEmpty()) {
-        qCInfo(lcCopilot) << "No GitHub token found, starting OAuth login";
-        tryOAuthLogin();
+        // No token: report unavailable and wait. OAuth starts only through
+        // startAuth() (an explicit user action), never during initialize().
+        qCInfo(lcCopilot) << "No GitHub token found; awaiting explicit sign-in";
+        m_available = false;
+        emit availabilityChanged(false);
         return;
     }
 
@@ -221,6 +224,19 @@ void CopilotProvider::shutdown()
     m_refreshTimer.stop();
     cancelRequest(m_activeRequestId);
     m_available = false;
+}
+
+ProviderAuthInfo CopilotProvider::authInfo() const
+{
+    ProviderAuthInfo info;
+    info.kind        = AuthAction::OAuth;
+    info.actionLabel = tr("Sign in with GitHub");
+    return info;
+}
+
+void CopilotProvider::startAuth()
+{
+    tryOAuthLogin();
 }
 
 void CopilotProvider::setKeyStorageCallbacks(KeyStoreFn store, KeyRetrieveFn retrieve, KeyDeleteFn remove)
@@ -321,10 +337,10 @@ void CopilotProvider::handleTokenReply(QNetworkReply *reply)
             return;
         }
 
-        // No refresh token or refresh already tried — clear and re-auth
+        // No refresh token or refresh already tried — clear saved auth and
+        // report unavailable. Re-authentication is an explicit user action.
         qCWarning(lcCopilot) << "Cannot recover, clearing saved auth";
         clearSavedAuth();
-        tryOAuthLogin();
         return;
     }
 
@@ -384,9 +400,8 @@ void CopilotProvider::scheduleTokenRefresh()
 void CopilotProvider::refreshOAuthToken()
 {
     if (m_refreshToken.isEmpty()) {
-        qCWarning(lcCopilot) << "No refresh token available, triggering re-auth";
+        qCWarning(lcCopilot) << "No refresh token available; awaiting explicit sign-in";
         clearSavedAuth();
-        tryOAuthLogin();
         return;
     }
 
@@ -437,9 +452,8 @@ void CopilotProvider::handleOAuthRefreshReply(QNetworkReply *reply)
     qCWarning(lcCopilot) << "OAuth refresh failed:" << error
                          << obj[QLatin1String("error_description")].toString();
 
-    // Refresh failed — clear everything and re-auth
+    // Refresh failed — clear everything; re-auth is an explicit user action.
     clearSavedAuth();
-    tryOAuthLogin();
 }
 
 void CopilotProvider::clearSavedAuth()

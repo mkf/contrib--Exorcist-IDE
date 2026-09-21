@@ -914,6 +914,31 @@ target_include_directories(test_aibranding PRIVATE
     ${CMAKE_SOURCE_DIR}/src/agent/chat)
 add_test(NAME AiBranding COMMAND test_aibranding)
 
+# ── PKCE helper tests ────────────────────────────────────────────────────────
+add_executable(test_pkce
+    test_pkce.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/pkce.h
+)
+target_link_libraries(test_pkce PRIVATE Qt6::Test Qt6::Core)
+target_include_directories(test_pkce PRIVATE ${CMAKE_SOURCE_DIR}/src/agent)
+add_test(NAME Pkce COMMAND test_pkce)
+
+# ── Provider auth action tests ───────────────────────────────────────────────
+add_executable(test_providerauth
+    test_providerauth.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/agentproviderregistry.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/agentproviderregistry.h
+    ${CMAKE_SOURCE_DIR}/src/agent/chat/chatwelcomewidget.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/chat/chatwelcomewidget.h
+    ${CMAKE_SOURCE_DIR}/src/aiinterface.h
+)
+target_link_libraries(test_providerauth PRIVATE Qt6::Test Qt6::Widgets)
+target_include_directories(test_providerauth PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/agent
+    ${CMAKE_SOURCE_DIR}/src/agent/chat)
+add_test(NAME ProviderAuth COMMAND test_providerauth)
+
 # Deploy Qt DLLs so tests can run (Windows)
 if(WIN32 AND EXORCIST_DEPLOY_QT)
     find_program(WINDEPLOYQT windeployqt HINTS "${CMAKE_PREFIX_PATH}/bin")

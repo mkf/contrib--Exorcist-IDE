@@ -40,12 +40,7 @@ void ChatWelcomeWidget::showState(State state)
         buildDefaultWelcome();
         break;
     case State::AuthRequired:
-        buildBannerState(
-            QStringLiteral("\U0001F512"),
-            tr("Sign In Required"),
-            tr("Sign in to use the AI assistant."),
-            ChatTheme::WarningFg,
-            State::AuthRequired);
+        showAuthRequired(QString());
         break;
     case State::RateLimited:
         buildBannerState(
@@ -68,6 +63,18 @@ void ChatWelcomeWidget::showState(State state)
         buildDefaultWelcome(true);
         break;
     }
+}
+
+void ChatWelcomeWidget::showAuthRequired(const QString &actionLabel)
+{
+    clearLayout();
+    buildBannerState(
+        QStringLiteral("\U0001F512"),
+        tr("Sign In Required"),
+        tr("Sign in to use the AI assistant."),
+        ChatTheme::WarningFg,
+        State::AuthRequired,
+        actionLabel);
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
@@ -171,7 +178,7 @@ void ChatWelcomeWidget::buildDefaultWelcome(bool disabled)
 
 void ChatWelcomeWidget::buildBannerState(const QString &icon, const QString &title,
                                           const QString &message, const char *accentColor,
-                                          State state)
+                                          State state, const QString &actionLabel)
 {
     auto *iconLabel = new QLabel(this);
     iconLabel->setText(icon);
@@ -195,18 +202,37 @@ void ChatWelcomeWidget::buildBannerState(const QString &icon, const QString &tit
 
     if (state == State::AuthRequired) {
         m_layout->addSpacing(12);
-        auto *signInBtn = new QToolButton(this);
-        signInBtn->setText(tr("Sign In with GitHub"));
-        signInBtn->setCursor(Qt::PointingHandCursor);
-        signInBtn->setStyleSheet(
-            QStringLiteral("QToolButton { color:%1; background:%2;"
-                          " border:none; border-radius:6px;"
-                          " padding:8px 20px; font-size:13px; font-weight:600; }"
-                          "QToolButton:hover { background:%3; }")
-                .arg(ChatTheme::ButtonFg, ChatTheme::ButtonBg,
-                     ChatTheme::ButtonHover));
-        connect(signInBtn, &QToolButton::clicked, this, &ChatWelcomeWidget::signInRequested);
-        m_layout->addWidget(signInBtn, 0, Qt::AlignCenter);
+
+        // Primary action: provider-supplied label and behavior.
+        if (!actionLabel.isEmpty()) {
+            auto *actionBtn = new QToolButton(this);
+            actionBtn->setText(actionLabel);
+            actionBtn->setCursor(Qt::PointingHandCursor);
+            actionBtn->setStyleSheet(
+                QStringLiteral("QToolButton { color:%1; background:%2;"
+                              " border:none; border-radius:6px;"
+                              " padding:8px 20px; font-size:13px; font-weight:600; }"
+                              "QToolButton:hover { background:%3; }")
+                    .arg(ChatTheme::ButtonFg, ChatTheme::ButtonBg,
+                         ChatTheme::ButtonHover));
+            connect(actionBtn, &QToolButton::clicked,
+                    this, &ChatWelcomeWidget::authActionRequested);
+            m_layout->addWidget(actionBtn, 0, Qt::AlignCenter);
+        }
+
+        // Secondary link: open the provider's key-entry surface.
+        auto *settingsLink = new QToolButton(this);
+        settingsLink->setText(tr("or open settings to paste your API key"));
+        settingsLink->setCursor(Qt::PointingHandCursor);
+        settingsLink->setAutoRaise(true);
+        settingsLink->setStyleSheet(
+            QStringLiteral("QToolButton { color:%1; background:transparent;"
+                          " border:none; font-size:12px; text-decoration:underline; }"
+                          "QToolButton:hover { color:%2; }")
+                .arg(ChatTheme::FgSecondary, ChatTheme::FgPrimary));
+        connect(settingsLink, &QToolButton::clicked,
+                this, &ChatWelcomeWidget::settingsRequested);
+        m_layout->addWidget(settingsLink, 0, Qt::AlignCenter);
     } else if (state == State::Offline || state == State::RateLimited) {
         m_layout->addSpacing(12);
         auto *retryBtn = new QToolButton(this);

@@ -314,10 +314,7 @@ void ChatPanelWidget::buildUi()
         m_jsBridge->setInputText(msg);
     });
     connect(m_jsBridge, &exorcist::ChatJSBridge::signInRequested,
-            this, [this] {
-        if (auto *active = m_orchestrator->activeProvider())
-            active->initialize();
-    });
+            this, &ChatPanelWidget::dispatchProviderAuthAction);
 
     connect(m_jsBridge, &exorcist::ChatJSBridge::openExternalUrlRequested,
             this, [](const QString &url) {
@@ -551,11 +548,10 @@ void ChatPanelWidget::buildUi()
             this, [this](const QString &msg) {
         m_inputWidget->setInputText(msg);
     });
-    connect(m_welcome, &ChatWelcomeWidget::signInRequested,
-            this, [this] {
-        if (auto *active = m_orchestrator->activeProvider())
-            active->initialize();
-    });
+    connect(m_welcome, &ChatWelcomeWidget::authActionRequested,
+            this, &ChatPanelWidget::dispatchProviderAuthAction);
+    connect(m_welcome, &ChatWelcomeWidget::settingsRequested,
+            this, &ChatPanelWidget::openProviderSettings);
     connect(m_welcome, &ChatWelcomeWidget::retryRequested,
             this, [this] {
         if (auto *active = m_orchestrator->activeProvider())
@@ -853,10 +849,7 @@ void ChatPanelWidget::connectTranscript()
         }
     });
     connect(m_transcript, &ChatTranscriptView::signInRequested,
-            this, [this] {
-        if (auto *active = m_orchestrator->activeProvider())
-            active->initialize();
-    });
+            this, &ChatPanelWidget::dispatchProviderAuthAction);
     connect(m_transcript, &ChatTranscriptView::keepFileRequested,
             this, [this](int, const QString &path) {
         m_pendingPatches.erase(
@@ -1258,9 +1251,11 @@ void ChatPanelWidget::showWelcomeOrTranscript()
 #else
         if (state == QLatin1String("noProvider"))
             m_welcome->showState(ChatWelcomeWidget::State::NoProvider);
-        else if (state == QLatin1String("auth"))
-            m_welcome->showState(ChatWelcomeWidget::State::AuthRequired);
-        else
+        else if (state == QLatin1String("auth")) {
+            const ProviderAuthInfo info = active->authInfo();
+            m_welcome->showAuthRequired(
+                info.kind == AuthAction::None ? QString() : info.actionLabel);
+        } else
             m_welcome->showState(ChatWelcomeWidget::State::Default);
         m_stack->setCurrentWidget(m_welcome);
 #endif
@@ -1294,6 +1289,36 @@ void ChatPanelWidget::updateSessionTitle()
 #else
     m_sessionTitleLabel->setText(title);
 #endif
+}
+
+void ChatPanelWidget::dispatchProviderAuthAction()
+{
+    auto *active = m_orchestrator ? m_orchestrator->activeProvider() : nullptr;
+    if (!active)
+        return;
+
+    const ProviderAuthInfo info = active->authInfo();
+    switch (info.kind) {
+    case AuthAction::OAuth:
+        active->startAuth();
+        break;
+    case AuthAction::OpenUrl:
+        if (!info.actionUrl.isEmpty())
+            QDesktopServices::openUrl(QUrl(info.actionUrl));
+        break;
+    case AuthAction::OpenSettings:
+        openProviderSettings();
+        break;
+    case AuthAction::None:
+        break;
+    }
+}
+
+void ChatPanelWidget::openProviderSettings()
+{
+    auto *active = m_orchestrator ? m_orchestrator->activeProvider() : nullptr;
+    const QString commandId = active ? active->authInfo().settingsCommandId : QString();
+    emit providerSettingsRequested(commandId);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

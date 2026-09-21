@@ -7,8 +7,10 @@
 #include <QPointer>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 
 class QNetworkReply;
+class QTcpServer;
 
 /// An OpenAI-compatible provider bound to one preset (OpenAI, Z.ai, OpenRouter
 /// or Custom). Endpoint and API key are read from / written to the preset
@@ -33,6 +35,9 @@ public:
     void initialize() override;
     void shutdown()   override;
 
+    ProviderAuthInfo authInfo() const override;
+    void             startAuth() override;
+
     void sendRequest(const AgentRequest &request)  override;
     void cancelRequest(const QString &requestId)   override;
 
@@ -51,6 +56,12 @@ private:
     QString buildUserContent(const AgentRequest &req) const;
     QString modelsUrl() const;
 
+    // ── OpenRouter OAuth PKCE ─────────────────────────────────────────────
+    void beginOpenRouterOAuth();
+    void handleOpenRouterCallback();
+    void exchangeOpenRouterCode(const QString &code);
+    void finishOpenRouterOAuth(bool ok);
+
     QString m_presetKey;
     QString m_endpoint;     // saved (possibly empty)
     QString m_apiKey;       // saved
@@ -63,4 +74,9 @@ private:
     QPointer<QNetworkReply> m_activeReply;
     QString        m_activeRequestId;
     QString        m_streamAccum;
+
+    // OpenRouter OAuth state
+    QTcpServer *m_oauthServer = nullptr;
+    QString     m_oauthVerifier;
+    QTimer      m_oauthTimeout;
 };

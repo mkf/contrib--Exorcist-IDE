@@ -101,6 +101,9 @@ public:
 
 signals:
     void settingsRequested();
+    /// Open the active provider's key-entry surface. commandId is the
+    /// provider's settings command, or empty for the generic settings dialog.
+    void providerSettingsRequested(const QString &commandId);
     void reviewAnnotationsReady(const QString &filePath,
                                 const QList<QPair<int, QString>> &annotations);
     void openFileRequested(const QString &filePath);
@@ -131,6 +134,8 @@ private:
     void refreshProviderList();
     void showWelcomeOrTranscript();
     void updateSessionTitle();
+    void dispatchProviderAuthAction();
+    void openProviderSettings();
     void startRequest(const QString &text, int mode, const QString &slashCmd = {});
     void showChangesBar(int editCount);
     void hideChangesBar();
