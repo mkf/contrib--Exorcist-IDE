@@ -107,13 +107,19 @@ void NotificationToast::startFadeIn()
     if (m_fadeAnim) {
         m_fadeAnim->stop();
         m_fadeAnim->deleteLater();
+        m_fadeAnim = nullptr;
     }
     m_fadeAnim = new QPropertyAnimation(this, "windowOpacity", this);
     m_fadeAnim->setDuration(200);
     m_fadeAnim->setStartValue(0.0);
     m_fadeAnim->setEndValue(1.0);
     m_fadeAnim->setEasingCurve(QEasingCurve::OutCubic);
-    m_fadeAnim->start(QAbstractAnimation::DeleteWhenStopped);
+    // Do NOT use DeleteWhenStopped here: this animation is member-tracked
+    // (m_fadeAnim) and must outlive that pointer. Self-deletion used to leave
+    // the pointer dangling once the 200 ms fade-in finished, and dismiss()
+    // later dereferenced the freed object (use-after-free / SEGFAULT).
+    // Lifetime is instead bounded by parenting to `this`.
+    m_fadeAnim->start();
 }
 
 void NotificationToast::dismiss()
@@ -134,6 +140,8 @@ void NotificationToast::dismiss()
     if (parentWidget())
         repositionAll(parentWidget());
 
+    // m_fadeAnim is never self-deleting (see startFadeIn), so it is guaranteed
+    // valid here: stop() is a no-op if the fade-in already finished.
     if (m_fadeAnim) {
         m_fadeAnim->stop();
         m_fadeAnim->deleteLater();
