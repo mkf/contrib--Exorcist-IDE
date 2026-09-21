@@ -39,12 +39,12 @@ Below are the non-obvious facts worth knowing up front.
   refresh with `nix develop --command which gdb` after a devShell bump.
 
 ## Scope rules
-- **Never touch the Ultralight UI** — `src/resources/chat/chat.html`,
-  `src/resources/chat/chat.js`, and any other Ultralight-rendered surface.
-  Exclude it from every proposal/change (no edits, not merely no wording) and
-  record it as out of scope; it is handled separately.
+- The Ultralight HTML renderer and its UI surfaces (`src/resources/chat/*`,
+  `src/resources/dashboard/*`, `src/agent/chat/ultralight/*`) were removed in
+  the `remove-ultralight` change. The chat panel and agent dashboard are now
+  Qt-widget-only; do not reintroduce an embedded web/HTML renderer.
 
 ## Conventions
 - Commit prefixes: `ai:`, `dev:`, `openspec:`.
-- When told to commit, commit the openspec artifacts before or (if per actual chronology) after the "apply" implementation result
+- When told to commit, commit the openspec artifacts before or (if per actual chronology) after the "apply" implementation result — except for task-completion checkboxes and other changes that really should go alongside the implementation commit.
 - OpenSpec planning lives in `openspec/changes/<name>/`; run its CLI per above.
