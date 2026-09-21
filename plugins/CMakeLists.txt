@@ -21,10 +21,6 @@ add_subdirectory(qt-tools)
 add_subdirectory(serial-monitor)
 add_subdirectory(automation)
 add_subdirectory(devops)
-# javascript-sdk: headless runtime needs JavaScriptCore
-if(EXORCIST_HAS_JAVASCRIPTCORE)
-    add_subdirectory(javascript-sdk)
-endif()
 add_subdirectory(claude)
 # add_subdirectory(codex)    # disabled — Copilot-first
 # add_subdirectory(ollama)   # disabled — Copilot-first

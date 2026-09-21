@@ -24,9 +24,6 @@
           qt.qtdeclarative
           qt.qttools
           qt.qtserialport
-          # System JavaScriptCore provider for the headless JS plugin runtime
-          # (pkg-config: javascriptcoregtk-4.1).
-          webkitgtk_4_1
           libGL
           libglvnd
           xorg.libX11

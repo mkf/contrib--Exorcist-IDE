@@ -170,23 +170,6 @@ endif()
 
 add_subdirectory(cmake/luajit)
 
-# ── JavaScriptCore provider ──────────────────────────────────────────────────
-# The headless JS plugin runtime (jspluginruntime/jshostapi) only needs the
-# JavaScriptCore C API, provided by the system JavaScriptCore (WebKitGTK).
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(JSC QUIET IMPORTED_TARGET javascriptcoregtk-4.1)
-endif()
-if(JSC_FOUND)
-    add_library(javascriptcore INTERFACE)
-    target_link_libraries(javascriptcore INTERFACE PkgConfig::JSC)
-    set(EXORCIST_HAS_JAVASCRIPTCORE ON)
-    message(STATUS "JavaScriptCore provider: system (javascriptcoregtk-4.1)")
-else()
-    set(EXORCIST_HAS_JAVASCRIPTCORE OFF)
-    message(STATUS "JavaScriptCore provider: none (headless JS plugin runtime disabled)")
-endif()
-
 add_subdirectory(src)
 add_subdirectory(server)
 add_subdirectory(plugins)
