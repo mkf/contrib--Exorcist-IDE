@@ -59,7 +59,7 @@ private:
     // ── OpenRouter OAuth PKCE ─────────────────────────────────────────────
     void beginOpenRouterOAuth();
     void handleOpenRouterCallback();
-    void exchangeOpenRouterCode(const QString &code);
+    void exchangeOpenRouterCode(const QString &code, const QString &verifier);
     void finishOpenRouterOAuth(bool ok);
 
     QString m_presetKey;

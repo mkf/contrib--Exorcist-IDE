@@ -18,6 +18,8 @@
 #include <QTimer>
 #include <QUrlQuery>
 
+#include <memory>
+
 Q_LOGGING_CATEGORY(lcByok, "exorcist.byok")
 
 using OpenAICompat::Preset;
@@ -230,41 +232,61 @@ void ByokProvider::beginOpenRouterOAuth()
 
 void ByokProvider::handleOpenRouterCallback()
 {
-    QTcpSocket *socket = m_oauthServer->nextPendingConnection();
-    if (!socket)
-        return;
+    while (m_oauthServer->hasPendingConnections()) {
+        QTcpSocket *socket = m_oauthServer->nextPendingConnection();
+        if (!socket)
+            break;
 
-    connect(socket, &QTcpSocket::readyRead, this, [this, socket] {
-        const QByteArray request = socket->readAll();
-        const QList<QByteArray> parts = request.split('\n').value(0).trimmed().split(' ');
+        auto buffer = std::make_shared<QByteArray>();
+        connect(socket, &QTcpSocket::readyRead, this, [this, socket, buffer] {
+            buffer->append(socket->readAll());
+            const int lineEnd = buffer->indexOf("\r\n");
+            if (lineEnd < 0)
+                return; // wait for the complete request line
 
-        QString code;
-        if (parts.size() >= 2) {
-            const QUrl url(QStringLiteral("http://localhost")
-                           + QString::fromUtf8(parts.at(1)));
-            code = QUrlQuery(url).queryItemValue(QStringLiteral("code"));
-        }
+            const QList<QByteArray> parts = buffer->left(lineEnd).trimmed().split(' ');
+            QString code;
+            if (parts.size() >= 2) {
+                const QUrl url(QStringLiteral("http://localhost")
+                               + QString::fromUtf8(parts.at(1)));
+                code = QUrlQuery(url).queryItemValue(QStringLiteral("code"));
+            }
 
-        const QByteArray body = code.isEmpty()
-            ? QByteArrayLiteral("<html><body><h3>Sign-in failed.</h3>"
-                                "You can close this window.</body></html>")
-            : QByteArrayLiteral("<html><body><h3>Signed in to OpenRouter.</h3>"
-                                "You can close this window.</body></html>");
-        socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n"
-                      "Connection: close\r\n\r\n" + body);
-        socket->disconnectFromHost();
-        socket->deleteLater();
+            const QByteArray body = code.isEmpty()
+                ? QByteArrayLiteral("<html><body><h3>Sign-in failed.</h3>"
+                                    "You can close this window.</body></html>")
+                : QByteArrayLiteral("<html><body><h3>Signed in to OpenRouter.</h3>"
+                                    "You can close this window.</body></html>");
 
-        if (code.isEmpty()) {
-            qCWarning(lcByok) << "OpenRouter OAuth: callback had no code";
-            finishOpenRouterOAuth(false);
-            return;
-        }
-        exchangeOpenRouterCode(code);
-    });
+            // A complete response (with Content-Length) stops the browser from
+            // retrying the callback, which would re-use the single-use code.
+            QByteArray response = "HTTP/1.1 200 OK\r\n"
+                                  "Content-Type: text/html; charset=utf-8\r\n"
+                                  "Content-Length: ";
+            response += QByteArray::number(body.size());
+            response += "\r\nConnection: close\r\n\r\n";
+            response += body;
+
+            connect(socket, &QTcpSocket::disconnected,
+                    socket, &QObject::deleteLater);
+            socket->write(response);
+            socket->disconnectFromHost();
+
+            // Ignore non-callback requests (e.g. favicon) and duplicates.
+            if (code.isEmpty() || m_oauthVerifier.isEmpty())
+                return;
+
+            // The authorization code is single-use: stop listening and
+            // exchange exactly once.
+            const QString verifier = m_oauthVerifier;
+            m_oauthVerifier.clear();
+            m_oauthServer->close();
+            exchangeOpenRouterCode(code, verifier);
+        });
+    }
 }
 
-void ByokProvider::exchangeOpenRouterCode(const QString &code)
+void ByokProvider::exchangeOpenRouterCode(const QString &code, const QString &verifier)
 {
     QNetworkRequest req{QUrl(QStringLiteral("https://openrouter.ai/api/v1/auth/keys"))};
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
@@ -272,7 +294,7 @@ void ByokProvider::exchangeOpenRouterCode(const QString &code)
 
     QJsonObject body;
     body[QStringLiteral("code")] = code;
-    body[QStringLiteral("code_verifier")] = m_oauthVerifier;
+    body[QStringLiteral("code_verifier")] = verifier;
     body[QStringLiteral("code_challenge_method")] = QStringLiteral("S256");
 
     QNetworkReply *reply = m_nam.post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
