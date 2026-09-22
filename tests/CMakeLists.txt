@@ -660,6 +660,47 @@ target_link_libraries(test_mcptrust PRIVATE Qt6::Test Qt6::Widgets)
 target_include_directories(test_mcptrust PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME McpTrust COMMAND test_mcptrust)
 
+# ── In-process MCP tool server tests ──────────────────────────────────────────
+add_executable(test_mcptoolservers
+    test_mcptoolservers.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/itool.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/itool.h
+    ${CMAKE_SOURCE_DIR}/src/mcp/inprocessmcpserver.cpp
+    ${CMAKE_SOURCE_DIR}/src/mcp/inprocessmcpserver.h
+    ${CMAKE_SOURCE_DIR}/src/mcp/mcpclient.cpp
+    ${CMAKE_SOURCE_DIR}/src/mcp/mcpclient.h
+    ${CMAKE_SOURCE_DIR}/src/mcp/mcptooladapter.h
+    ${CMAKE_SOURCE_DIR}/src/mcp/tooldiscoverybridge.cpp
+    ${CMAKE_SOURCE_DIR}/src/mcp/tooldiscoverybridge.h
+    ${CMAKE_SOURCE_DIR}/src/process/bridgeclient.cpp
+    ${CMAKE_SOURCE_DIR}/src/process/ipcprotocol.cpp
+)
+target_link_libraries(test_mcptoolservers PRIVATE Qt6::Test Qt6::Widgets Qt6::Network)
+target_include_directories(test_mcptoolservers PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME McpToolServers COMMAND test_mcptoolservers)
+
+# ── In-process MCP tool server grouping tests ─────────────────────────────────
+add_executable(test_mcptoolservergrouping
+    test_mcptoolservergrouping.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/mcpservers/agenttoolservers_simple.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/mcpservers/agenttoolservers.h
+    ${CMAKE_SOURCE_DIR}/src/agent/mcpservers/unavailabletool.h
+    ${CMAKE_SOURCE_DIR}/src/agent/itool.cpp
+    ${CMAKE_SOURCE_DIR}/src/mcp/inprocessmcpserver.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/tools/githubmcptools.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/tools/httptool.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/tools/websearchtool.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/tools/moretools.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/tools/databasetool.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/tools/projectdbtool.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/tools/systemtools.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/tools/sandboxtools.cpp
+    ${CMAKE_SOURCE_DIR}/src/agent/tools/devtools.cpp
+)
+target_link_libraries(test_mcptoolservergrouping PRIVATE Qt6::Test Qt6::Widgets Qt6::Network Qt6::Sql)
+target_include_directories(test_mcptoolservergrouping PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_test(NAME McpToolServerGrouping COMMAND test_mcptoolservergrouping)
+
 # ── Marketplace Safety tests ──────────────────────────────────────────────────
 add_executable(test_marketplacesafety
     test_marketplacesafety.cpp

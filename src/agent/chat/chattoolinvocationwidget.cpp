@@ -342,8 +342,19 @@ void ChatToolInvocationWidget::updateState(const ChatContentPart &part)
     }
 }
 
+namespace {
+// Hosted MCP tools are namespaced as <server>__<tool>; match on the
+// server-local name.
+QString serverLocalName(const QString &toolName)
+{
+    const int sep = toolName.indexOf(QLatin1String("__"));
+    return sep >= 0 ? toolName.mid(sep + 2) : toolName;
+}
+} // namespace
+
 QString ChatToolInvocationWidget::formatToolInput(const QString &toolName, const QString &text)
 {
+    const QString name = serverLocalName(toolName);
     const QString trimmed = text.trimmed();
     if (!trimmed.startsWith(QLatin1Char('{')))
         return escapeAndLimit(trimmed, 300);
@@ -356,19 +367,19 @@ QString ChatToolInvocationWidget::formatToolInput(const QString &toolName, const
     const QJsonObject obj = doc.object();
 
     // Tool-specific smart summaries
-    if (toolName == QLatin1String("read_file")) {
+    if (name == QLatin1String("read_file")) {
         return keyValueLine(QStringLiteral("file"),
                             obj.value(QLatin1String("filePath")).toString());
     }
-    if (toolName == QLatin1String("create_file")) {
+    if (name == QLatin1String("create_file")) {
         const QString fp = obj.value(QLatin1String("filePath")).toString();
         const QString content = obj.value(QLatin1String("content")).toString();
         return keyValueLine(QStringLiteral("file"), fp)
              + keyValueLine(QStringLiteral("content"),
                            limitText(content, 200) + QStringLiteral(" ..."));
     }
-    if (toolName == QLatin1String("replace_string_in_file")
-        || toolName == QLatin1String("edit_file")) {
+    if (name == QLatin1String("replace_string_in_file")
+        || name == QLatin1String("edit_file")) {
         const QString fp = obj.value(QLatin1String("filePath")).toString();
         const QString old = obj.value(QLatin1String("oldString")).toString();
         const QString nw  = obj.value(QLatin1String("newString")).toString();
@@ -379,8 +390,8 @@ QString ChatToolInvocationWidget::formatToolInput(const QString &toolName, const
             html += diffLine(limitText(nw, 150), true);
         return html;
     }
-    if (toolName == QLatin1String("run_in_terminal")
-        || toolName == QLatin1String("run_command")) {
+    if (name == QLatin1String("run_in_terminal")
+        || name == QLatin1String("run_command")) {
         const QString cmd = obj.value(QLatin1String("command")).toString();
         const QString expl = obj.value(QLatin1String("explanation")).toString();
         QString html;
@@ -391,18 +402,18 @@ QString ChatToolInvocationWidget::formatToolInput(const QString &toolName, const
                         .arg(limitText(cmd, 200).toHtmlEscaped());
         return html;
     }
-    if (toolName == QLatin1String("grep_search")
-        || toolName == QLatin1String("semantic_search")
-        || toolName == QLatin1String("codebase_search")) {
+    if (name == QLatin1String("grep_search")
+        || name == QLatin1String("semantic_search")
+        || name == QLatin1String("codebase_search")) {
         const QString q = obj.value(QLatin1String("query")).toString();
         return keyValueLine(QStringLiteral("query"),
                            QStringLiteral("\u201C") + q + QStringLiteral("\u201D"));
     }
-    if (toolName == QLatin1String("list_dir")) {
+    if (name == QLatin1String("list_dir")) {
         return keyValueLine(QStringLiteral("path"),
                            obj.value(QLatin1String("path")).toString());
     }
-    if (toolName == QLatin1String("file_search")) {
+    if (name == QLatin1String("file_search")) {
         return keyValueLine(QStringLiteral("query"),
                            obj.value(QLatin1String("query")).toString());
     }
@@ -413,6 +424,7 @@ QString ChatToolInvocationWidget::formatToolInput(const QString &toolName, const
 
 QString ChatToolInvocationWidget::formatToolOutput(const QString &toolName, const QString &text)
 {
+    const QString name = serverLocalName(toolName);
     const QString trimmed = text.trimmed();
 
     // Try JSON
@@ -428,9 +440,9 @@ QString ChatToolInvocationWidget::formatToolOutput(const QString &toolName, cons
     }
 
     // For terminal output, preserve line breaks
-    if (toolName == QLatin1String("run_in_terminal")
-        || toolName == QLatin1String("run_command")
-        || toolName == QLatin1String("get_terminal_output")) {
+    if (name == QLatin1String("run_in_terminal")
+        || name == QLatin1String("run_command")
+        || name == QLatin1String("get_terminal_output")) {
         return formatTerminalOutput(trimmed);
     }
 
@@ -667,9 +679,10 @@ QString ChatToolInvocationWidget::iconForTool(const QString &toolName)
 
 bool ChatToolInvocationWidget::isTerminalTool() const
 {
-    return m_toolName == QLatin1String("run_in_terminal")
-        || m_toolName == QLatin1String("run_command")
-        || m_toolName == QLatin1String("get_terminal_output");
+    const QString name = serverLocalName(m_toolName);
+    return name == QLatin1String("run_in_terminal")
+        || name == QLatin1String("run_command")
+        || name == QLatin1String("get_terminal_output");
 }
 
 void ChatToolInvocationWidget::startSpinner()

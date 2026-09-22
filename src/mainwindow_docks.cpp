@@ -508,7 +508,7 @@ void MainWindow::createDockWidgets()
             auto *mc = m_dockBootstrap->mcpClient();
             const QList<McpToolInfo> tools = mc->allTools();
             for (const McpToolInfo &t : tools) {
-                const QString regName = QStringLiteral("mcp_%1_%2").arg(t.serverName, t.name);
+                const QString regName = McpToolAdapter::namespacedName(t.serverName, t.name);
                 if (!m_agentPlatform->toolRegistry()->hasTool(regName))
                     m_agentPlatform->toolRegistry()->registerTool(std::make_unique<McpToolAdapter>(mc, t));
             }

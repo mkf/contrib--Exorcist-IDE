@@ -6,7 +6,10 @@
 #include <QObject>
 #include <QProcess>
 
+#include "../agent/itool.h"
+
 class BridgeClient;
+class InProcessMcpServer;
 
 /// MCP Tool descriptor discovered from a server.
 struct McpToolInfo {
@@ -14,6 +17,11 @@ struct McpToolInfo {
     QString description;
     QJsonObject inputSchema;   // JSON Schema for the tool's parameters
     QString serverName;        // which MCP server exposes this tool
+    // Permission level of the underlying tool. Remote servers default to
+    // Dangerous; in-process servers report the real level.
+    AgentToolPermission permission = AgentToolPermission::Dangerous;
+    // Workspace contexts this tool is scoped to (empty = always available).
+    QStringList contexts;
 };
 
 /// MCP Server configuration.
@@ -32,6 +40,8 @@ struct McpToolResult {
     QString error;
 };
 
+Q_DECLARE_METATYPE(McpToolResult)
+
 /// Client for the Model Context Protocol (MCP).
 /// Supports stdio-based MCP servers using JSON-RPC 2.0.
 class McpClient : public QObject
@@ -44,6 +54,17 @@ public:
 
     /// Add a server configuration without connecting.
     void addServer(const McpServerConfig &config);
+
+    /// Register an in-process MCP server. The server is discovered
+    /// immediately (no child process) and its tools become available.
+    /// The client does not take ownership of the server.
+    void addInProcessServer(InProcessMcpServer *server);
+
+    /// Unregister an in-process MCP server by name.
+    void removeInProcessServer(const QString &name);
+
+    /// Whether the named server is an in-process server.
+    bool isInProcess(const QString &name) const;
 
     /// Connect to all configured servers.
     void connectAll();
@@ -89,6 +110,7 @@ private:
     struct ServerState {
         McpServerConfig config;
         QProcess *process = nullptr;
+        InProcessMcpServer *inProcess = nullptr;
         bool initialized = false;
         int nextId = 1;
         QByteArray buffer;

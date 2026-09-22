@@ -118,6 +118,11 @@ add_executable(exorcist WIN32
     agent/agentorchestrator.h
     agent/agentplatformbootstrap.cpp
     agent/agentplatformbootstrap.h
+    agent/agenttoolcallbacks.h
+    agent/mcpservers/agenttoolservers.cpp
+    agent/mcpservers/agenttoolservers.h
+    agent/mcpservers/agenttoolservers_simple.cpp
+    agent/mcpservers/unavailabletool.h
     bootstrap/bridgebootstrap.cpp
     bootstrap/bridgebootstrap.h
     bootstrap/aiservicesbootstrap.h
@@ -329,6 +334,10 @@ add_executable(exorcist WIN32
     mcp/mcpclient.cpp
     mcp/mcpclient.h
     mcp/mcptooladapter.h
+    mcp/inprocessmcpserver.cpp
+    mcp/inprocessmcpserver.h
+    mcp/tooldiscoverybridge.cpp
+    mcp/tooldiscoverybridge.h
     mcp/mcppanel.cpp
     mcp/mcppanel.h
     ui/notificationtoast.cpp

@@ -1,5 +1,7 @@
 #include "agentplatformbootstrap.h"
 
+#include "mcpservers/agenttoolservers.h"
+
 #include "agentcontroller.h"
 #include "agentorchestrator.h"
 #include "agentproviderregistry.h"
@@ -72,6 +74,7 @@
 #include "terminalsessionmanager.h"
 #include "workspacecontextdetector.h"
 #include "../core/qtprocess.h"
+#include "../mcp/inprocessmcpserver.h"
 #include "../pluginmanager.h"
 #include "../serviceregistry.h"
 
@@ -89,6 +92,30 @@ AgentPlatformBootstrap::AgentPlatformBootstrap(AgentOrchestrator *orchestrator,
     , m_fileSystem(fileSystem)
     , m_process(std::make_unique<QtProcess>())
 {
+}
+
+AgentPlatformBootstrap::~AgentPlatformBootstrap() = default;
+
+QList<InProcessMcpServer *> AgentPlatformBootstrap::mcpServers() const
+{
+    QList<InProcessMcpServer *> servers;
+    servers.reserve(static_cast<int>(m_mcpServers.size()));
+    for (const auto &server : m_mcpServers)
+        servers.append(server.get());
+    return servers;
+}
+
+ITool *AgentPlatformBootstrap::findTool(const QString &name) const
+{
+    if (m_toolRegistry) {
+        if (ITool *t = findTool(name))
+            return t;
+    }
+    for (const auto &server : m_mcpServers) {
+        if (ITool *t = server->tool(name))
+            return t;
+    }
+    return nullptr;
 }
 
 void AgentPlatformBootstrap::initialize(const Callbacks &callbacks)
@@ -153,6 +180,11 @@ void AgentPlatformBootstrap::registerCoreTools(const QString &workspaceRoot)
         return;
     }
 
+    // ── Core tools (directly registered, never hosted) ───────────────────
+    // Filesystem: create_file, create_directory, read_file,
+    //   replace_string_in_file, multi_replace_string_in_file, file_search,
+    //   list_dir, get_changed_files.
+    // Search: grep_search, semantic_search.
     m_toolRegistry->registerTool(std::make_unique<ReadFileTool>(m_fileSystem));
     m_toolRegistry->registerTool(std::make_unique<ListFilesTool>(m_fileSystem));
 
@@ -163,378 +195,57 @@ void AgentPlatformBootstrap::registerCoreTools(const QString &workspaceRoot)
         writeTool->setTransactionStore(txStore);
         m_toolRegistry->registerTool(std::move(writeTool));
     }
-    {
-        auto overwriteTool = std::make_unique<OverwriteFileTool>(m_fileSystem);
-        overwriteTool->setTransactionStore(txStore);
-        m_toolRegistry->registerTool(std::move(overwriteTool));
-    }
-    m_toolRegistry->registerTool(std::make_unique<BeginTransactionTool>(txStore));
-    m_toolRegistry->registerTool(std::make_unique<CommitTransactionTool>(txStore));
-    m_toolRegistry->registerTool(std::make_unique<RollbackTransactionTool>(txStore));
-
-    m_toolRegistry->registerTool(std::make_unique<ApplyPatchTool>(m_fileSystem));
-
-    // ── Undo file edits (snapshot rollback) ──────────────────────────────
-    {
-        auto snapshotGetter = [this]() -> QHash<QString, QString> {
-            auto *session = m_agentController ? m_agentController->session() : nullptr;
-            return session ? session->fileSnapshots() : QHash<QString, QString>{};
-        };
-        auto fileRestorer = [this](const QString &path) -> UndoFileEditTool::UndoResult {
-            auto *session = m_agentController ? m_agentController->session() : nullptr;
-            if (!session)
-                return {false, 0, QStringLiteral("No active session.")};
-            const auto snaps = session->fileSnapshots();
-            if (!snaps.contains(path))
-                return {false, 0, QStringLiteral("No snapshot for: %1").arg(path)};
-
-            const QString &original = snaps[path];
-            if (original.isNull()) {
-                // File didn't exist before — delete it
-                QFile::remove(path);
-                return {true, 1, QStringLiteral("Deleted (file did not exist before).")};
-            }
-            QString error;
-            if (!m_fileSystem->writeTextFile(path, original, &error))
-                return {false, 0, error};
-            return {true, 1, QStringLiteral("Restored to pre-edit state.")};
-        };
-        m_toolRegistry->registerTool(std::make_unique<UndoFileEditTool>(
-            std::move(snapshotGetter), std::move(fileRestorer)));
-    }
     m_toolRegistry->registerTool(std::make_unique<ReplaceStringTool>());
     m_toolRegistry->registerTool(std::make_unique<MultiReplaceStringTool>());
-    m_toolRegistry->registerTool(std::make_unique<InsertEditIntoFileTool>());
     m_toolRegistry->registerTool(std::make_unique<SearchWorkspaceTool>(workspaceRoot));
     m_toolRegistry->registerTool(std::make_unique<SemanticSearchTool>(workspaceRoot));
     m_toolRegistry->registerTool(std::make_unique<FileSearchTool>(workspaceRoot));
     m_toolRegistry->registerTool(std::make_unique<CreateDirectoryTool>());
-    m_toolRegistry->registerTool(std::make_unique<ManageTodoListTool>(
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-            + QStringLiteral("/agent_todo.json")));
-    m_toolRegistry->registerTool(std::make_unique<ReadProjectStructureTool>(workspaceRoot));
-    m_toolRegistry->registerTool(std::make_unique<RunCommandTool>(
-        m_process.get(), workspaceRoot, m_sessionManager));
-
-    // ── Terminal session tools (core, universal) ──────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<GetTerminalOutputTool>(m_sessionManager));
-    m_toolRegistry->registerTool(std::make_unique<KillTerminalTool>(m_sessionManager));
-    m_toolRegistry->registerTool(std::make_unique<AwaitTerminalTool>(m_sessionManager));
-    if (m_callbacks.terminalSelectionGetter)
-        m_toolRegistry->registerTool(std::make_unique<TerminalSelectionTool>(m_callbacks.terminalSelectionGetter));
-    if (m_callbacks.terminalOutputGetter)
-        m_toolRegistry->registerTool(std::make_unique<TerminalLastCommandTool>(m_callbacks.terminalOutputGetter));
-    m_toolRegistry->registerTool(std::make_unique<GitStatusTool>(m_callbacks.gitStatusGetter));
     m_toolRegistry->registerTool(std::make_unique<GetChangedFilesTool>(m_callbacks.changedFilesGetter));
-    m_toolRegistry->registerTool(std::make_unique<GitDiffTool>(m_callbacks.gitDiffGetter));
-    m_toolRegistry->registerTool(std::make_unique<FetchWebpageTool>());
-    m_toolRegistry->registerTool(std::make_unique<WebSearchTool>());
-    m_toolRegistry->registerTool(std::make_unique<MemoryTool>(
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-            + QStringLiteral("/memories")));
-    m_toolRegistry->registerTool(std::make_unique<GetErrorsTool>(m_callbacks.diagnosticsGetter));
 
-    // ── Debug adapter tools ──────────────────────────────────────────────
-    if (m_callbacks.debugBreakpointSetter) {
-        m_toolRegistry->registerTool(std::make_unique<DebugSetBreakpointTool>(
-            m_callbacks.debugBreakpointSetter, m_callbacks.debugBreakpointRemover));
-    }
-    if (m_callbacks.debugStackGetter) {
-        m_toolRegistry->registerTool(std::make_unique<DebugGetStackTraceTool>(
-            m_callbacks.debugStackGetter));
-    }
-    if (m_callbacks.debugVariablesGetter) {
-        m_toolRegistry->registerTool(std::make_unique<DebugGetVariablesTool>(
-            m_callbacks.debugVariablesGetter, m_callbacks.debugEvaluator));
-    }
-    if (m_callbacks.debugStepper) {
-        m_toolRegistry->registerTool(std::make_unique<DebugStepTool>(
-            m_callbacks.debugStepper));
-    }
+    // ── Hosted MCP servers (non-core tools) ──────────────────────────────
+    // Each server owns one cohesive tool family and is constructed from the
+    // collaborators the platform already created.
+    const QString appDataPath =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
 
-    // ── Screenshot tool ──────────────────────────────────────────────────
-    if (m_callbacks.widgetGrabber) {
-        m_toolRegistry->registerTool(std::make_unique<ScreenshotTool>(
-            m_callbacks.widgetGrabber));
-    }
-
-    // ── Introspection tool ───────────────────────────────────────────────
-    if (m_callbacks.introspectionHandler) {
-        m_toolRegistry->registerTool(std::make_unique<IntrospectTool>(
-            m_callbacks.introspectionHandler));
-    }
-
-    // ── HTTP request tool ────────────────────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<HttpRequestTool>());
-
-    // ── Lua execution tool ───────────────────────────────────────────────
-    if (m_callbacks.luaExecutor) {
-        m_toolRegistry->registerTool(std::make_unique<LuaExecuteTool>(
-            m_callbacks.luaExecutor));
-    }
-
-    // ── Agent tool store (save/list/run custom Lua tools) ────────────────
-    m_toolRegistry->registerTool(std::make_unique<SaveLuaToolTool>());
-    m_toolRegistry->registerTool(std::make_unique<ListLuaToolsTool>());
-    if (m_callbacks.luaExecutor) {
-        m_toolRegistry->registerTool(std::make_unique<RunLuaToolTool>(
-            m_callbacks.luaExecutor));
-    }
-
-    // ── Code graph / intelligence tool ───────────────────────────────────
-    if (m_callbacks.symbolSearchFn) {
-        m_toolRegistry->registerTool(std::make_unique<CodeGraphTool>(
-            m_callbacks.symbolSearchFn,
-            m_callbacks.symbolsInFileFn,
-            m_callbacks.findReferencesFn,
-            m_callbacks.findDefinitionFn,
-            m_callbacks.chunkSearchFn));
-    }
-
-    // ── Build & test tools ───────────────────────────────────────────────
-    if (m_callbacks.buildProjectFn) {
-        m_toolRegistry->registerTool(std::make_unique<BuildProjectTool>(
-            m_callbacks.buildProjectFn));
-    }
-    if (m_callbacks.runTestsFn) {
-        m_toolRegistry->registerTool(std::make_unique<RunTestsTool>(
-            m_callbacks.runTestsFn));
-    }
-    if (m_callbacks.buildTargetsGetter) {
-        m_toolRegistry->registerTool(std::make_unique<GetBuildTargetsTool>(
-            m_callbacks.buildTargetsGetter));
-    }
-    if (m_callbacks.testFailureGetter) {
-        m_toolRegistry->registerTool(std::make_unique<TestFailureTool>(
-            m_callbacks.testFailureGetter));
-    }
-
-    // ── Navigation tools ─────────────────────────────────────────────────
-    if (m_callbacks.fileOpener) {
-        m_toolRegistry->registerTool(std::make_unique<OpenFileTool>(
-            m_callbacks.fileOpener));
-    }
-    m_toolRegistry->registerTool(std::make_unique<SwitchHeaderSourceTool>(
-        m_callbacks.headerSourceSwitcher));
-
-    // ── Code formatting tool ──────────────────────────────────────────────
-    if (m_callbacks.codeFormatter) {
-        m_toolRegistry->registerTool(std::make_unique<FormatCodeTool>(
-            m_callbacks.codeFormatter));
-    }
-
-    // ── Refactoring tool (LSP) ────────────────────────────────────────────
-    if (m_callbacks.refactorer) {
-        m_toolRegistry->registerTool(std::make_unique<RefactorTool>(
-            m_callbacks.refactorer));
-    }
-
-    // ── Ask user tool ─────────────────────────────────────────────────────
-    if (m_callbacks.userPrompter) {
-        m_toolRegistry->registerTool(std::make_unique<AskUserTool>(
-            m_callbacks.userPrompter));
-    }
-
-    // ── Editor context tool ───────────────────────────────────────────────
-    if (m_callbacks.editorStateGetter) {
-        m_toolRegistry->registerTool(std::make_unique<EditorContextTool>(
-            m_callbacks.editorStateGetter));
-    }
-
-    // ── Change impact analysis tool ───────────────────────────────────────
-    if (m_callbacks.changeImpactAnalyzer) {
-        m_toolRegistry->registerTool(std::make_unique<ChangeImpactTool>(
-            m_callbacks.changeImpactAnalyzer));
-    }
-
-    // ── Scratchpad (project-linked notes) ─────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<ScratchpadTool>(
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-            + QStringLiteral("/scratchpad")));
-
-    // ── Sub-agent tool ────────────────────────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<SubagentTool>(
-        m_orchestrator, m_toolRegistry, m_contextBuilder));
-
-    // ── LSP rename & usages ───────────────────────────────────────────────
-    if (m_callbacks.symbolRenamer) {
-        m_toolRegistry->registerTool(std::make_unique<RenameSymbolTool>(
-            m_callbacks.symbolRenamer));
-    }
-    if (m_callbacks.usageFinder) {
-        m_toolRegistry->registerTool(std::make_unique<ListCodeUsagesTool>(
-            m_callbacks.usageFinder));
-    }
-
-    // ── Project setup info ────────────────────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<GetProjectSetupInfoTool>(
-        workspaceRoot));
-
-    // ── File management tools (rename/delete/copy/watch) ──────────────────
-    m_toolRegistry->registerTool(std::make_unique<DeleteFileTool>());
-    m_toolRegistry->registerTool(std::make_unique<RenameFileTool>());
-    m_toolRegistry->registerTool(std::make_unique<CopyFileTool>());
-    m_toolRegistry->registerTool(std::make_unique<FileWatcherTool>());
-
-    // ── Clipboard tool ────────────────────────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<ClipboardTool>());
-
-    // ── Diff tool ─────────────────────────────────────────────────────────
-    {
-        auto diffTool = std::make_unique<DiffTool>(m_callbacks.diffViewer);
-        diffTool->setWorkspaceRoot(workspaceRoot);
-        m_toolRegistry->registerTool(std::move(diffTool));
-    }
-
-    // ── Database tool (SQLite) ────────────────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<DatabaseTool>());
-
-    // ── Agent memory database (private SQLite) ────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<AgentMemoryDbTool>());
-
-    // ── Project database (multi-driver) ───────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<ProjectDatabaseTool>());
-
-    // ── Project brain database (workspace code index) ─────────────────────
-    m_toolRegistry->registerTool(std::make_unique<ProjectBrainDbTool>());
-
-    // ── Project brain rules & memory management ──────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<ManageRulesTool>(m_brainService));
-    m_toolRegistry->registerTool(std::make_unique<ManageMemoryTool>(m_brainService));
-
-    // ── System / process management tool ──────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<ProcessManagementTool>());
-
-    // ── Network diagnostics tool ──────────────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<NetworkTool>());
-
-    // ── Static analysis tool ──────────────────────────────────────────────
-    if (m_callbacks.staticAnalyzer) {
-        m_toolRegistry->registerTool(std::make_unique<StaticAnalysisTool>(
-            m_callbacks.staticAnalyzer));
-    }
-
-    // ── IDE command execution tool ────────────────────────────────────
-    if (m_callbacks.commandExecutor) {
-        m_toolRegistry->registerTool(std::make_unique<RunIdeCommandTool>(
-            m_callbacks.commandExecutor, m_callbacks.commandListGetter));
-    }
-
-    // ── Sandbox utility tools (JSON, time, regex, env vars, hash, config) ──
-    m_toolRegistry->registerTool(std::make_unique<JsonParseFormatTool>());
-    m_toolRegistry->registerTool(std::make_unique<CurrentTimeTool>());
-    m_toolRegistry->registerTool(std::make_unique<RegexTestTool>());
-    m_toolRegistry->registerTool(std::make_unique<EnvironmentVariablesTool>());
-    m_toolRegistry->registerTool(std::make_unique<FileHashTool>());
-    m_toolRegistry->registerTool(std::make_unique<WorkspaceConfigTool>(m_fileSystem));
-
-    // ── Development workflow tools ────────────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<CompileAndRunTool>());
-    m_toolRegistry->registerTool(std::make_unique<ArchiveTool>());
-    m_toolRegistry->registerTool(std::make_unique<CreatePatchTool>());
-    m_toolRegistry->registerTool(std::make_unique<ImageInfoTool>());
-
-    // ── Docker management ─────────────────────────────────────────────────
-    m_toolRegistry->registerTool(std::make_unique<DockerTool>(m_process.get()));
-
-    // ── Tree-sitter AST parsing ───────────────────────────────────────────
-    if (m_callbacks.treeSitterParser) {
-        m_toolRegistry->registerTool(std::make_unique<TreeSitterParseTool>(
-            m_callbacks.treeSitterParser));
-    }
-
-    // ── Tree-sitter rich AST query ────────────────────────────────────────
-    if (m_callbacks.tsFileParser && m_callbacks.tsQueryRunner &&
-        m_callbacks.tsSymbolExtractor && m_callbacks.tsNodeAtPosition) {
-        m_toolRegistry->registerTool(std::make_unique<TreeSitterQueryTool>(
-            m_callbacks.tsFileParser,
-            m_callbacks.tsQueryRunner,
-            m_callbacks.tsSymbolExtractor,
-            m_callbacks.tsNodeAtPosition));
-    }
+    m_mcpServers.push_back(std::make_unique<TerminalToolServer>(
+        m_process.get(), workspaceRoot, m_sessionManager, m_callbacks));
+    m_mcpServers.push_back(std::make_unique<FileManagementToolServer>(
+        m_fileSystem, workspaceRoot, m_agentController, txStore));
+    m_mcpServers.push_back(std::make_unique<OrchestrationToolServer>(
+        m_orchestrator, m_toolRegistry, m_contextBuilder, appDataPath));
+    m_mcpServers.push_back(std::make_unique<MemoryToolServer>(
+        m_brainService, appDataPath));
+    m_mcpServers.push_back(std::make_unique<CodeIntelligenceToolServer>(m_callbacks));
+    m_mcpServers.push_back(std::make_unique<DebugToolServer>(m_callbacks));
+    m_mcpServers.push_back(std::make_unique<EditorToolServer>(m_callbacks, workspaceRoot));
+    m_mcpServers.push_back(std::make_unique<IdeCommandToolServer>(m_callbacks));
+    m_mcpServers.push_back(std::make_unique<BuildTestToolServer>(
+        m_callbacks, m_fileSystem, txStore));
+    m_mcpServers.push_back(std::make_unique<WorkspaceToolServer>(
+        workspaceRoot, m_fileSystem));
+    m_mcpServers.push_back(std::make_unique<GitToolServer>(m_callbacks));
+    m_mcpServers.push_back(std::make_unique<GithubToolServer>());
+    m_mcpServers.push_back(std::make_unique<WebToolServer>());
+    m_mcpServers.push_back(std::make_unique<BrowserToolServer>());
+    m_mcpServers.push_back(std::make_unique<NotebookToolServer>(this));
+    m_mcpServers.push_back(std::make_unique<PythonToolServer>(m_sessionManager));
+    m_mcpServers.push_back(std::make_unique<NodeToolServer>(m_sessionManager));
+    m_mcpServers.push_back(std::make_unique<PylanceToolServer>());
+    m_mcpServers.push_back(std::make_unique<SonarQubeToolServer>());
+    m_mcpServers.push_back(std::make_unique<DockerToolServer>(m_process.get()));
+    m_mcpServers.push_back(std::make_unique<DatabaseToolServer>());
+    m_mcpServers.push_back(std::make_unique<SystemToolServer>());
+    m_mcpServers.push_back(std::make_unique<LuaToolServer>(m_callbacks));
+    if (m_uiBus)
+        m_mcpServers.push_back(std::make_unique<DashboardToolServer>(m_uiBus));
+    m_mcpServers.push_back(std::make_unique<SecretsToolServer>(m_callbacks));
 
     // ── LSP diagnostics real-time push ────────────────────────────────────
     m_diagnosticsNotifier = std::make_unique<DiagnosticsNotifier>(this);
     if (m_agentController) {
         m_agentController->setDiagnosticsNotifier(m_diagnosticsNotifier.get());
-    }
-
-    // ── Diagram generation (Mermaid/PlantUML) ─────────────────────────────
-    if (m_callbacks.diagramRenderer) {
-        m_toolRegistry->registerTool(std::make_unique<GenerateDiagramTool>(
-            m_callbacks.diagramRenderer));
-    }
-
-    // ── Performance profiling ─────────────────────────────────────────────
-    if (m_callbacks.profiler) {
-        m_toolRegistry->registerTool(std::make_unique<PerformanceProfileTool>(
-            m_callbacks.profiler));
-    }
-
-    // ── Symbol documentation (LSP hover) ──────────────────────────────────
-    if (m_callbacks.symbolDocGetter) {
-        m_toolRegistry->registerTool(std::make_unique<SymbolDocTool>(
-            m_callbacks.symbolDocGetter));
-    }
-
-    // ── Code completion (LSP) ─────────────────────────────────────────────
-    if (m_callbacks.completionGetter) {
-        m_toolRegistry->registerTool(std::make_unique<CodeCompletionTool>(
-            m_callbacks.completionGetter));
-    }
-
-    // ── Managed tools (language-specific, context-filtered) ────────────
-    // These tools declare their contexts in ToolSpec::contexts.
-    // ToolRegistry filters them based on detected workspace contexts.
-
-    // Python tools (context: "python")
-    m_toolRegistry->registerTool(std::make_unique<PythonEnvTool>(m_sessionManager));
-    m_toolRegistry->registerTool(std::make_unique<InstallPythonPackagesTool>(m_sessionManager));
-    m_toolRegistry->registerTool(std::make_unique<RunPythonTool>(m_sessionManager));
-
-    // Node/Web tools (context: "web", "node")
-    m_toolRegistry->registerTool(std::make_unique<PackageJsonInfoTool>());
-    m_toolRegistry->registerTool(std::make_unique<NpmRunTool>(m_sessionManager));
-    m_toolRegistry->registerTool(std::make_unique<InstallNodePackagesTool>(m_sessionManager));
-
-    // Notebook / Jupyter tools (context: "notebook")
-    {
-        auto *nbMgr = new NotebookManager(this);
-        m_toolRegistry->registerTool(std::make_unique<NotebookContextTool>(nbMgr));
-        m_toolRegistry->registerTool(std::make_unique<ReadCellOutputTool>(nbMgr));
-        m_toolRegistry->registerTool(std::make_unique<CreateNotebookTool>());
-        m_toolRegistry->registerTool(std::make_unique<EditNotebookCellsTool>());
-        m_toolRegistry->registerTool(std::make_unique<GetNotebookSummaryTool>());
-    }
-
-    // GitHub integration tools
-    m_toolRegistry->registerTool(std::make_unique<GitHubIssuesTool>());
-    m_toolRegistry->registerTool(std::make_unique<GitHubPRTool>());
-    m_toolRegistry->registerTool(std::make_unique<GitHubCodeSearchTool>());
-    m_toolRegistry->registerTool(std::make_unique<GitHubRepoInfoTool>());
-
-    // ── Agent dashboard tools (live operational UI) ──────────────────────
-    if (m_uiBus) {
-        m_toolRegistry->registerTool(std::make_unique<CreateDashboardMissionTool>(m_uiBus));
-        m_toolRegistry->registerTool(std::make_unique<UpdateDashboardStepTool>(m_uiBus));
-        m_toolRegistry->registerTool(std::make_unique<UpdateDashboardMetricTool>(m_uiBus));
-        m_toolRegistry->registerTool(std::make_unique<AddDashboardLogTool>(m_uiBus));
-        m_toolRegistry->registerTool(std::make_unique<AddDashboardArtifactTool>(m_uiBus));
-        m_toolRegistry->registerTool(std::make_unique<CompleteDashboardMissionTool>(m_uiBus));
-    }
-
-    // ── Secure key storage tools ──────────────────────────────────────────
-    if (m_callbacks.secureKeyStorer && m_callbacks.secureKeyGetter) {
-        m_toolRegistry->registerTool(std::make_unique<StoreSecretTool>(
-            m_callbacks.secureKeyStorer));
-        m_toolRegistry->registerTool(std::make_unique<GetSecretTool>(
-            m_callbacks.secureKeyGetter));
-        m_toolRegistry->registerTool(std::make_unique<ListSecretsTool>(
-            m_callbacks.secureKeyLister));
-        if (m_callbacks.secureKeyDeleter) {
-            m_toolRegistry->registerTool(std::make_unique<DeleteSecretTool>(
-                m_callbacks.secureKeyDeleter));
-        }
     }
 
     setWorkspaceRoot(workspaceRoot);
@@ -598,22 +309,22 @@ void AgentPlatformBootstrap::setWorkspaceRoot(const QString &root)
         return;
     }
 
-    auto *searchTool = dynamic_cast<SearchWorkspaceTool *>(m_toolRegistry->tool(QStringLiteral("grep_search")));
+    auto *searchTool = dynamic_cast<SearchWorkspaceTool *>(findTool(QStringLiteral("grep_search")));
     if (searchTool) {
         searchTool->setWorkspaceRoot(root);
     }
 
-    auto *semSearchTool = dynamic_cast<SemanticSearchTool *>(m_toolRegistry->tool(QStringLiteral("semantic_search")));
+    auto *semSearchTool = dynamic_cast<SemanticSearchTool *>(findTool(QStringLiteral("semantic_search")));
     if (semSearchTool) {
         semSearchTool->setWorkspaceRoot(root);
     }
 
-    auto *fileSearchTool = dynamic_cast<FileSearchTool *>(m_toolRegistry->tool(QStringLiteral("file_search")));
+    auto *fileSearchTool = dynamic_cast<FileSearchTool *>(findTool(QStringLiteral("file_search")));
     if (fileSearchTool) {
         fileSearchTool->setWorkspaceRoot(root);
     }
 
-    auto *runCommandTool = dynamic_cast<RunCommandTool *>(m_toolRegistry->tool(QStringLiteral("run_in_terminal")));
+    auto *runCommandTool = dynamic_cast<RunCommandTool *>(findTool(QStringLiteral("run_in_terminal")));
     if (runCommandTool) {
         runCommandTool->setWorkingDirectory(root);
     }
@@ -627,79 +338,79 @@ void AgentPlatformBootstrap::setWorkspaceRoot(const QString &root)
     const QSet<QString> contexts = WorkspaceContextDetector::detect(root);
     m_toolRegistry->setActiveContexts(contexts);
 
-    auto *readTool = dynamic_cast<ReadFileTool *>(m_toolRegistry->tool(QStringLiteral("read_file")));
+    auto *readTool = dynamic_cast<ReadFileTool *>(findTool(QStringLiteral("read_file")));
     if (readTool) {
         readTool->setWorkspaceRoot(root);
     }
 
-    auto *listTool = dynamic_cast<ListFilesTool *>(m_toolRegistry->tool(QStringLiteral("list_dir")));
+    auto *listTool = dynamic_cast<ListFilesTool *>(findTool(QStringLiteral("list_dir")));
     if (listTool) {
         listTool->setWorkspaceRoot(root);
     }
 
-    auto *writeTool = dynamic_cast<WriteFileTool *>(m_toolRegistry->tool(QStringLiteral("create_file")));
+    auto *writeTool = dynamic_cast<WriteFileTool *>(findTool(QStringLiteral("create_file")));
     if (writeTool) {
         writeTool->setWorkspaceRoot(root);
     }
 
-    auto *projectTool = dynamic_cast<ReadProjectStructureTool *>(m_toolRegistry->tool(QStringLiteral("read_project_structure")));
+    auto *projectTool = dynamic_cast<ReadProjectStructureTool *>(findTool(QStringLiteral("read_project_structure")));
     if (projectTool) {
         projectTool->setWorkspaceRoot(root);
     }
 
-    auto *setupInfoTool = dynamic_cast<GetProjectSetupInfoTool *>(m_toolRegistry->tool(QStringLiteral("get_project_setup_info")));
+    auto *setupInfoTool = dynamic_cast<GetProjectSetupInfoTool *>(findTool(QStringLiteral("get_project_setup_info")));
     if (setupInfoTool) {
         setupInfoTool->setWorkspaceRoot(root);
     }
 
     // ── Set workspace root on new tools ───────────────────────────────────
-    auto *delTool = dynamic_cast<DeleteFileTool *>(m_toolRegistry->tool(QStringLiteral("delete_file")));
+    auto *delTool = dynamic_cast<DeleteFileTool *>(findTool(QStringLiteral("delete_file")));
     if (delTool) delTool->setWorkspaceRoot(root);
 
-    auto *renameTool = dynamic_cast<RenameFileTool *>(m_toolRegistry->tool(QStringLiteral("rename_file")));
+    auto *renameTool = dynamic_cast<RenameFileTool *>(findTool(QStringLiteral("rename_file")));
     if (renameTool) renameTool->setWorkspaceRoot(root);
 
-    auto *copyTool = dynamic_cast<CopyFileTool *>(m_toolRegistry->tool(QStringLiteral("copy_file")));
+    auto *copyTool = dynamic_cast<CopyFileTool *>(findTool(QStringLiteral("copy_file")));
     if (copyTool) copyTool->setWorkspaceRoot(root);
 
-    auto *watchTool = dynamic_cast<FileWatcherTool *>(m_toolRegistry->tool(QStringLiteral("file_watcher")));
+    auto *watchTool = dynamic_cast<FileWatcherTool *>(findTool(QStringLiteral("file_watcher")));
     if (watchTool) watchTool->setWorkspaceRoot(root);
 
-    auto *diffTool = dynamic_cast<DiffTool *>(m_toolRegistry->tool(QStringLiteral("diff")));
+    auto *diffTool = dynamic_cast<DiffTool *>(findTool(QStringLiteral("diff")));
     if (diffTool) diffTool->setWorkspaceRoot(root);
 
-    auto *dbTool = dynamic_cast<DatabaseTool *>(m_toolRegistry->tool(QStringLiteral("database_query")));
+    auto *dbTool = dynamic_cast<DatabaseTool *>(findTool(QStringLiteral("database_query")));
     if (dbTool) dbTool->setWorkspaceRoot(root);
 
     // ── Set workspace root on sandbox & dev tools ─────────────────────────
-    auto *hashTool = dynamic_cast<FileHashTool *>(m_toolRegistry->tool(QStringLiteral("file_content_hash")));
+    auto *hashTool = dynamic_cast<FileHashTool *>(findTool(QStringLiteral("file_content_hash")));
     if (hashTool) hashTool->setWorkspaceRoot(root);
 
-    auto *wsConfigTool = dynamic_cast<WorkspaceConfigTool *>(m_toolRegistry->tool(QStringLiteral("workspace_config")));
+    auto *wsConfigTool = dynamic_cast<WorkspaceConfigTool *>(findTool(QStringLiteral("workspace_config")));
     if (wsConfigTool) wsConfigTool->setWorkspaceRoot(root);
 
-    auto *compileRunTool = dynamic_cast<CompileAndRunTool *>(m_toolRegistry->tool(QStringLiteral("compile_and_run")));
+    auto *compileRunTool = dynamic_cast<CompileAndRunTool *>(findTool(QStringLiteral("compile_and_run")));
     if (compileRunTool) compileRunTool->setWorkspaceRoot(root);
 
-    auto *archiveTool = dynamic_cast<ArchiveTool *>(m_toolRegistry->tool(QStringLiteral("archive")));
+    auto *archiveTool = dynamic_cast<ArchiveTool *>(findTool(QStringLiteral("archive")));
     if (archiveTool) archiveTool->setWorkspaceRoot(root);
 
-    auto *patchTool = dynamic_cast<CreatePatchTool *>(m_toolRegistry->tool(QStringLiteral("create_patch_file")));
+    auto *patchTool = dynamic_cast<CreatePatchTool *>(findTool(QStringLiteral("create_patch_file")));
     if (patchTool) patchTool->setWorkspaceRoot(root);
 
-    auto *imgTool = dynamic_cast<ImageInfoTool *>(m_toolRegistry->tool(QStringLiteral("image_info")));
+    auto *imgTool = dynamic_cast<ImageInfoTool *>(findTool(QStringLiteral("image_info")));
     if (imgTool) imgTool->setWorkspaceRoot(root);
 
-    auto *diagramTool = dynamic_cast<GenerateDiagramTool *>(m_toolRegistry->tool(QStringLiteral("generate_diagram")));
+    auto *diagramTool = dynamic_cast<GenerateDiagramTool *>(findTool(QStringLiteral("generate_diagram")));
     if (diagramTool) diagramTool->setWorkspaceRoot(root);
 
-    auto *brainDbTool = dynamic_cast<ProjectBrainDbTool *>(m_toolRegistry->tool(QStringLiteral("project_brain_db")));
+    auto *brainDbTool = dynamic_cast<ProjectBrainDbTool *>(findTool(QStringLiteral("project_brain_db")));
     if (brainDbTool) brainDbTool->setWorkspaceRoot(root);
 
-    auto *overwriteTool = dynamic_cast<OverwriteFileTool *>(m_toolRegistry->tool(QStringLiteral("write_file")));
+    auto *overwriteTool = dynamic_cast<OverwriteFileTool *>(findTool(QStringLiteral("write_file")));
     if (overwriteTool) overwriteTool->setWorkspaceRoot(root);
 
-    auto *dockerTool = dynamic_cast<DockerTool *>(m_toolRegistry->tool(QStringLiteral("docker")));
+    auto *dockerTool = dynamic_cast<DockerTool *>(findTool(QStringLiteral("docker")));
     if (dockerTool) dockerTool->setWorkspaceRoot(root);
 }
 

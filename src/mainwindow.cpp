@@ -99,6 +99,7 @@
 #include <QGroupBox>
 #include <QPlainTextEdit>
 
+#include "mcp/inprocessmcpserver.h"
 #include "mcp/mcpclient.h"
 #include "mcp/mcppanel.h"
 #include "mcp/mcptooladapter.h"
@@ -332,6 +333,24 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_agentPlatform->initialize(agentCallbacks);
     m_agentPlatform->registerCoreTools(m_editorMgr->currentFolder());
+
+    // Register the in-process MCP servers with the MCP client and adapt their
+    // tools into the registry, namespaced as <server>__<tool>.
+    if (m_dockBootstrap) {
+        auto *mc = m_dockBootstrap->mcpClient();
+        auto *registry = m_agentPlatform->toolRegistry();
+        for (InProcessMcpServer *server : m_agentPlatform->mcpServers()) {
+            mc->addInProcessServer(server);
+            for (const McpToolInfo &t : mc->allTools()) {
+                if (t.serverName != server->name())
+                    continue;
+                const QString regName =
+                    McpToolAdapter::namespacedName(t.serverName, t.name);
+                if (!registry->hasTool(regName))
+                    registry->registerTool(std::make_unique<McpToolAdapter>(mc, t));
+            }
+        }
+    }
 
     // ── Wire LSP diagnostics push to agent (deferred to post-plugin wiring) ──
 

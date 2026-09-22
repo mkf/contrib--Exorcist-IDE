@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
+#include "inprocessmcpserver.h"
 #include "process/bridgeclient.h"
 
 McpClient::McpClient(QObject *parent)
@@ -29,6 +30,56 @@ void McpClient::connectAll()
 {
     for (auto it = m_servers.begin(); it != m_servers.end(); ++it)
         connectServer(it.key());
+}
+
+void McpClient::addInProcessServer(InProcessMcpServer *server)
+{
+    if (!server)
+        return;
+
+    const QString name = server->name();
+    if (m_servers.contains(name))
+        return;
+
+    ServerState state;
+    state.inProcess = server;
+    state.initialized = true;
+
+    const QJsonArray toolsArr = server->listTools();
+    for (const QJsonValue &v : toolsArr) {
+        const QJsonObject tObj = v.toObject();
+        McpToolInfo info;
+        info.name        = tObj[QLatin1String("name")].toString();
+        info.description = tObj[QLatin1String("description")].toString();
+        info.inputSchema = tObj[QLatin1String("inputSchema")].toObject();
+        info.serverName  = name;
+        info.permission  = static_cast<AgentToolPermission>(
+            tObj[QLatin1String("x-permission")].toInt(
+                static_cast<int>(AgentToolPermission::Dangerous)));
+        const QJsonArray contextsArr = tObj[QLatin1String("x-contexts")].toArray();
+        for (const QJsonValue &c : contextsArr)
+            info.contexts.append(c.toString());
+        state.tools.append(info);
+    }
+
+    m_servers.insert(name, state);
+    emit serverConnected(name);
+    emit toolsDiscovered(name, state.tools);
+}
+
+void McpClient::removeInProcessServer(const QString &name)
+{
+    auto it = m_servers.find(name);
+    if (it == m_servers.end() || !it->inProcess)
+        return;
+    m_servers.erase(it);
+    emit serverDisconnected(name);
+}
+
+bool McpClient::isInProcess(const QString &name) const
+{
+    auto it = m_servers.constFind(name);
+    return it != m_servers.constEnd() && it->inProcess != nullptr;
 }
 
 bool McpClient::connectServer(const QString &name)
@@ -96,6 +147,11 @@ void McpClient::disconnectServer(const QString &name)
     if (!m_servers.contains(name))
         return;
     auto &state = m_servers[name];
+    if (state.inProcess) {
+        m_servers.remove(name);
+        emit serverDisconnected(name);
+        return;
+    }
     if (state.process) {
         state.process->kill();
         state.process->waitForFinished(3000);
@@ -133,6 +189,28 @@ void McpClient::callTool(const QString &toolName, const QJsonObject &arguments,
     if (m_bridgeClient) {
         callToolViaBridge(toolName, arguments, requestId);
         return;
+    }
+
+    // In-process servers answer directly, without JSON-RPC framing.
+    for (auto it = m_servers.begin(); it != m_servers.end(); ++it) {
+        if (!it->inProcess || !it->initialized) continue;
+        for (const auto &tool : it->tools) {
+            if (tool.name != toolName) continue;
+
+            const QJsonObject result = it->inProcess->callTool(toolName, arguments);
+            McpToolResult res;
+            res.content = result[QLatin1String("content")].toArray();
+            for (const QJsonValue &v : res.content) {
+                const QJsonObject piece = v.toObject();
+                if (piece[QLatin1String("type")].toString() == QLatin1String("text"))
+                    res.text += piece[QLatin1String("text")].toString();
+            }
+            res.ok = !result[QLatin1String("isError")].toBool();
+            if (!res.ok)
+                res.error = res.text;
+            emit toolCallFinished(requestId, res);
+            return;
+        }
     }
 
     // Find which server owns this tool

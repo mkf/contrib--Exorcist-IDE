@@ -103,6 +103,11 @@ public:
     void registerTool(std::unique_ptr<ITool> tool);
     void removeTool(const QString &name);
 
+    /// Remove and return a tool by name. Returns nullptr if absent.
+    /// Used to hand a directly registered tool to an in-process MCP server
+    /// without reconstructing it.
+    std::unique_ptr<ITool> takeTool(const QString &name);
+
     // ── Lookup ────────────────────────────────────────────────────────────
 
     ITool *tool(const QString &name) const;

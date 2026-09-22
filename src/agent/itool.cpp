@@ -18,6 +18,16 @@ void ToolRegistry::removeTool(const QString &name)
     m_tools.erase(name);
 }
 
+std::unique_ptr<ITool> ToolRegistry::takeTool(const QString &name)
+{
+    auto it = m_tools.find(name);
+    if (it == m_tools.end())
+        return nullptr;
+    auto tool = std::move(it->second);
+    m_tools.erase(it);
+    return tool;
+}
+
 ITool *ToolRegistry::tool(const QString &name) const
 {
     auto it = m_tools.find(name);
